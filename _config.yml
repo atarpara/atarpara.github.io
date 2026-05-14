@@ -1,0 +1,19 @@
+title: atarpara
+description: "EVM · Formal Verification · Low-level Optimization"
+tagline: "EVM · Formal Verification · Low-level Optimization"
+url: "https://atarpara.github.io"
+baseurl: ""
+
+# Author
+author: atarpara
+github_username: atarpara
+# twitter_username: your_twitter_handle
+
+markdown: kramdown
+highlighter: rouge
+permalink: /:title
+
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock

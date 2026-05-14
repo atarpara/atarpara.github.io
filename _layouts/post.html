@@ -1,0 +1,48 @@
+---
+layout: default
+---
+<a href="{{ '/' | relative_url }}" class="back-link">← Back</a>
+
+<article class="fade-in">
+  <div class="post-header">
+    <h1>{{ page.title }}</h1>
+    <div class="post-meta">
+      <time>{{ page.date | date: "%B %-d, %Y" }}</time>
+      {% assign words = content | number_of_words %}
+      {% assign minutes = words | divided_by: 230 %}
+      {% if minutes < 1 %}{% assign minutes = 1 %}{% endif %}
+      <span class="dot">·</span>
+      <span>{{ minutes }} min read</span>
+    </div>
+    {% if page.tags.size > 0 %}
+    <div class="post-tags">
+      {% for tag in page.tags %}
+      <span class="tag">{{ tag }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% comment %} Auto-generate Table of Contents from headings {% endcomment %}
+  {% assign headings = content | split: '<h2' %}
+  {% if headings.size > 2 %}
+  <details class="toc" open>
+    <summary>Table of Contents</summary>
+    <ol>
+      {% for h in headings %}
+        {% if forloop.first %}{% continue %}{% endif %}
+        {% assign id_part = h | split: 'id="' %}
+        {% if id_part.size > 1 %}
+          {% assign id = id_part[1] | split: '"' | first %}
+          {% assign title_part = h | split: '>' %}
+          {% assign raw_title = title_part[1] | split: '</h2>' | first %}
+          {% assign clean_title = raw_title | strip_html %}
+          <li><a href="#{{ id }}">{{ clean_title }}</a></li>
+        {% endif %}
+      {% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+
+  {{ content }}
+</article>

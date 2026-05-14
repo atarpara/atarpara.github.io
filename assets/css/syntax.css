@@ -1,0 +1,167 @@
+/* ═══════════════════════════════════════════════════════
+   Syntax Highlighting — One Dark inspired
+   Dark default, light variant via [data-theme="light"]
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Dark theme (default) ────────────────────────────── */
+.highlight, .highlight .w { color: #abb2bf; }
+
+/* Keywords */
+.highlight .k,
+.highlight .kd,
+.highlight .kn,
+.highlight .kp,
+.highlight .kr,
+.highlight .kv { color: #c678dd; }
+
+/* Keyword type */
+.highlight .kt { color: #e5c07b; }
+
+/* Keyword constant */
+.highlight .kc { color: #d19a66; }
+
+/* Strings */
+.highlight .s, .highlight .sa, .highlight .sb, .highlight .sc,
+.highlight .dl, .highlight .sd, .highlight .s2, .highlight .se,
+.highlight .sh, .highlight .sx, .highlight .s1, .highlight .ss { color: #98c379; }
+
+/* Numbers */
+.highlight .l, .highlight .ld, .highlight .m, .highlight .mb,
+.highlight .mf, .highlight .mh, .highlight .mi, .highlight .il,
+.highlight .mo, .highlight .mx { color: #d19a66; }
+
+/* Comments */
+.highlight .c, .highlight .ch, .highlight .cd, .highlight .cm,
+.highlight .cp, .highlight .cpf, .highlight .c1, .highlight .cs { color: #5c6370; font-style: italic; }
+
+/* Functions / method names */
+.highlight .nf, .highlight .fm { color: #61afef; }
+
+/* Classes / types */
+.highlight .nc, .highlight .nn { color: #e5c07b; }
+
+/* Builtins */
+.highlight .nb { color: #e5c07b; }
+
+/* Names */
+.highlight .no { color: #d19a66; }
+
+/* Variables */
+.highlight .nv, .highlight .vc, .highlight .vg, .highlight .vi, .highlight .vm { color: #e06c75; }
+
+/* Operators */
+.highlight .o, .highlight .ow { color: #56b6c2; }
+
+/* Attributes / tags */
+.highlight .na { color: #d19a66; }
+.highlight .nt { color: #e06c75; }
+
+/* Regex */
+.highlight .sr { color: #98c379; }
+
+/* Decorators */
+.highlight .nd { color: #61afef; }
+
+/* Diffs */
+.highlight .gd { color: #e06c75; background-color: rgba(224, 108, 117, 0.1); }
+.highlight .gi { color: #98c379; background-color: rgba(152, 195, 121, 0.1); }
+
+/* Bold / italic */
+.highlight .gs { font-weight: bold; }
+.highlight .ge { font-style: italic; }
+.highlight .ges { font-weight: bold; font-style: italic; }
+
+/* Generic heading */
+.highlight .gh, .highlight .gu { color: #61afef; font-weight: bold; }
+
+/* Errors — don't highlight, just inherit */
+.highlight .err { color: inherit; background-color: transparent; }
+
+/* Generic output / traceback */
+.highlight .gl, .highlight .gt { color: #5c6370; }
+
+/* Interpolation / special */
+.highlight .ni, .highlight .si { color: #e06c75; }
+
+/* Escape sequences */
+.highlight .se { color: #d19a66; }
+
+/* Name label */
+.highlight .nl { color: #e06c75; }
+.highlight .py { color: #e06c75; }
+
+/* Builtin pseudo */
+.highlight .bp { color: #56b6c2; }
+.highlight .ne { color: #e5c07b; }
+
+/* Table elements */
+.highlight table td { padding: 5px; }
+.highlight table pre { margin: 0; }
+
+/* ── Light theme override ────────────────────────────── */
+[data-theme="light"] .highlight,
+[data-theme="light"] .highlight .w { color: #383a42; }
+
+[data-theme="light"] .highlight .k,
+[data-theme="light"] .highlight .kd,
+[data-theme="light"] .highlight .kn,
+[data-theme="light"] .highlight .kp,
+[data-theme="light"] .highlight .kr,
+[data-theme="light"] .highlight .kv { color: #a626a4; }
+
+[data-theme="light"] .highlight .kt { color: #c18401; }
+[data-theme="light"] .highlight .kc { color: #986801; }
+
+[data-theme="light"] .highlight .s, [data-theme="light"] .highlight .sa,
+[data-theme="light"] .highlight .sb, [data-theme="light"] .highlight .sc,
+[data-theme="light"] .highlight .dl, [data-theme="light"] .highlight .sd,
+[data-theme="light"] .highlight .s2, [data-theme="light"] .highlight .se,
+[data-theme="light"] .highlight .sh, [data-theme="light"] .highlight .sx,
+[data-theme="light"] .highlight .s1, [data-theme="light"] .highlight .ss { color: #50a14f; }
+
+[data-theme="light"] .highlight .l, [data-theme="light"] .highlight .ld,
+[data-theme="light"] .highlight .m, [data-theme="light"] .highlight .mb,
+[data-theme="light"] .highlight .mf, [data-theme="light"] .highlight .mh,
+[data-theme="light"] .highlight .mi, [data-theme="light"] .highlight .il,
+[data-theme="light"] .highlight .mo, [data-theme="light"] .highlight .mx { color: #986801; }
+
+[data-theme="light"] .highlight .c, [data-theme="light"] .highlight .ch,
+[data-theme="light"] .highlight .cd, [data-theme="light"] .highlight .cm,
+[data-theme="light"] .highlight .cp, [data-theme="light"] .highlight .cpf,
+[data-theme="light"] .highlight .c1, [data-theme="light"] .highlight .cs { color: #a0a1a7; }
+
+[data-theme="light"] .highlight .nf,
+[data-theme="light"] .highlight .fm { color: #4078f2; }
+
+[data-theme="light"] .highlight .nc,
+[data-theme="light"] .highlight .nn { color: #c18401; }
+
+[data-theme="light"] .highlight .nb { color: #c18401; }
+[data-theme="light"] .highlight .no { color: #986801; }
+
+[data-theme="light"] .highlight .nv, [data-theme="light"] .highlight .vc,
+[data-theme="light"] .highlight .vg, [data-theme="light"] .highlight .vi,
+[data-theme="light"] .highlight .vm { color: #e45649; }
+
+[data-theme="light"] .highlight .o,
+[data-theme="light"] .highlight .ow { color: #0184bc; }
+
+[data-theme="light"] .highlight .na { color: #986801; }
+[data-theme="light"] .highlight .nt { color: #e45649; }
+[data-theme="light"] .highlight .sr { color: #50a14f; }
+[data-theme="light"] .highlight .nd { color: #4078f2; }
+
+[data-theme="light"] .highlight .gd { color: #e45649; background-color: rgba(228, 86, 73, 0.08); }
+[data-theme="light"] .highlight .gi { color: #50a14f; background-color: rgba(80, 161, 79, 0.08); }
+
+[data-theme="light"] .highlight .gh,
+[data-theme="light"] .highlight .gu { color: #4078f2; }
+
+[data-theme="light"] .highlight .ni,
+[data-theme="light"] .highlight .si { color: #e45649; }
+[data-theme="light"] .highlight .nl { color: #e45649; }
+[data-theme="light"] .highlight .py { color: #e45649; }
+[data-theme="light"] .highlight .bp { color: #0184bc; }
+[data-theme="light"] .highlight .ne { color: #c18401; }
+[data-theme="light"] .highlight .gl,
+[data-theme="light"] .highlight .gt { color: #a0a1a7; }

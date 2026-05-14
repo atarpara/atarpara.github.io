@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
+  <meta name="description" content="{% if page.description %}{{ page.description }}{% elsif page.excerpt %}{{ page.excerpt | strip_html | truncatewords: 30 }}{% else %}{{ site.description }}{% endif %}">
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="{% if page.title %}{{ page.title }}{% else %}{{ site.title }}{% endif %}">
+  <meta property="og:description" content="{% if page.description %}{{ page.description }}{% elsif page.excerpt %}{{ page.excerpt | strip_html | truncatewords: 30 }}{% else %}{{ site.description }}{% endif %}">
+  <meta property="og:type" content="{% if page.title %}article{% else %}website{% endif %}">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:site_name" content="{{ site.title }}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{% if page.title %}{{ page.title }}{% else %}{{ site.title }}{% endif %}">
+  <meta name="twitter:description" content="{% if page.description %}{{ page.description }}{% elsif page.excerpt %}{{ page.excerpt | strip_html | truncatewords: 30 }}{% else %}{{ site.description }}{% endif %}">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ],
+      throwOnError: false
+    });"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/syntax.css' | relative_url }}">
+
+  <!-- Theme: restore before paint -->
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    })();
+  </script>
+</head>
+<body>
+  <!-- Scroll progress -->
+  <div class="scroll-progress" id="scrollProgress"></div>
+
+  <header>
+    <div class="header-inner">
+      <a href="{{ '/' | relative_url }}" class="site-title">{{ site.title }}</a>
+      <div class="header-right">
+        <a href="{{ '/about' | relative_url }}">About</a>
+        {% if site.github_username %}<a href="https://github.com/{{ site.github_username }}" target="_blank" rel="noopener">GitHub</a>{% endif %}
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+          <svg id="iconSun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg id="iconMoon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    {{ content }}
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <span>&copy; {{ 'now' | date: "%Y" }} {{ site.title }}</span>
+      <div class="footer-links">
+        {% if site.github_username %}<a href="https://github.com/{{ site.github_username }}" target="_blank" rel="noopener">GitHub</a>{% endif %}
+        {% if site.twitter_username %}<a href="https://twitter.com/{{ site.twitter_username }}" target="_blank" rel="noopener">Twitter</a>{% endif %}
+      </div>
+    </div>
+  </footer>
+
+  <!-- Theme toggle logic -->
+  <script>
+    (function() {
+      var btn = document.getElementById('themeToggle');
+      var sun = document.getElementById('iconSun');
+      var moon = document.getElementById('iconMoon');
+
+      function setIcons() {
+        var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        sun.style.display = isLight ? 'none' : 'block';
+        moon.style.display = isLight ? 'block' : 'none';
+      }
+
+      setIcons();
+
+      btn.addEventListener('click', function() {
+        var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        if (isLight) {
+          document.documentElement.removeAttribute('data-theme');
+          localStorage.removeItem('theme');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+          localStorage.setItem('theme', 'light');
+        }
+        setIcons();
+      });
+    })();
+  </script>
+
+  <!-- Scroll progress -->
+  <script>
+    (function() {
+      var bar = document.getElementById('scrollProgress');
+      window.addEventListener('scroll', function() {
+        var h = document.documentElement.scrollHeight - window.innerHeight;
+        bar.style.width = (h > 0 ? (window.scrollY / h) * 100 : 0) + '%';
+      }, { passive: true });
+    })();
+  </script>
+
+  <!-- Mermaid -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false });
+    document.querySelectorAll('pre > code.language-mermaid').forEach(el => {
+      const pre = el.parentElement;
+      const div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = el.textContent;
+      pre.replaceWith(div);
+    });
+    await mermaid.run();
+  </script>
+
+  <!-- Lean4 highlighter -->
+  <script>
+    (function () {
+      const KW = new Set([
+        'def','theorem','lemma','example','instance','class','structure',
+        'inductive','coinductive','abbrev','axiom','opaque','constant',
+        'partial','noncomputable','unsafe','protected','private','mutual',
+        'variable','variables','universe','universes',
+        'notation','infix','infixl','infixr','prefix','postfix',
+        'macro','macro_rules','syntax','elab','attribute',
+        'if','then','else','match','with','do','let','have','show','from',
+        'fun','where','by','return',
+        'open','namespace','end','import','export','section','in','as',
+        'deriving','extends'
+      ]);
+      const DECL = new Set(['def','theorem','lemma','example','instance','class','structure','inductive','abbrev','axiom','opaque','constant']);
+      const KT = new Set(['Prop','Type','Sort','True','False','Nat','Int','Bool','String','Unit','List','Array','Option']);
+      const OP = new Set(Array.from('+-*/<>=≤≥≠←→↔⇒↦∀∃∧∨¬⊢•·×∘⊕⊗∪∩⊆⊇|'));
+      const idStart = /[\p{L}_]/u;
+      const idCont  = /[\p{L}\p{N}_'!?]/u;
+      const upperStart = /^[\p{Lu}]/u;
+      const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+      function highlight(src) {
+        let i = 0, out = '';
+        let pendingDecl = false;
+        while (i < src.length) {
+          const c = src[i], n = src[i+1];
+          if (c === '/' && n === '-') {
+            let j = i + 2, d = 1;
+            while (j < src.length && d > 0) {
+              if (src[j] === '/' && src[j+1] === '-') { d++; j += 2; }
+              else if (src[j] === '-' && src[j+1] === '/') { d--; j += 2; }
+              else j++;
+            }
+            out += '<span class="cm">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (c === '-' && n === '-') {
+            let j = i;
+            while (j < src.length && src[j] !== '\n') j++;
+            out += '<span class="c1">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (c === '"') {
+            let j = i + 1;
+            while (j < src.length && src[j] !== '"') { if (src[j] === '\\') j++; j++; }
+            j = Math.min(j + 1, src.length);
+            out += '<span class="s2">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (c === ':' && n === '=') { out += '<span class="o">:=</span>'; i += 2; continue; }
+          if (c === '=' && n === '>') { out += '<span class="o">=&gt;</span>'; i += 2; continue; }
+          if (c === '<' && n === '-') { out += '<span class="o">&lt;-</span>'; i += 2; continue; }
+          if (/\d/.test(c)) {
+            let j = i;
+            while (j < src.length && /[\w.]/.test(src[j])) j++;
+            out += '<span class="mi">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (idStart.test(c)) {
+            let j = i + 1;
+            while (j < src.length && idCont.test(src[j])) j++;
+            const w = src.slice(i, j);
+            let cls;
+            if (KW.has(w))            { cls = 'k';  pendingDecl = DECL.has(w); }
+            else if (KT.has(w))       { cls = 'kt'; pendingDecl = false; }
+            else if (pendingDecl)     { cls = 'nf'; pendingDecl = false; }
+            else if (upperStart.test(w)) { cls = 'nc'; }
+            else                      { cls = 'n'; }
+            out += '<span class="' + cls + '">' + esc(w) + '</span>';
+            i = j; continue;
+          }
+          if (OP.has(c)) {
+            let j = i + 1;
+            while (j < src.length && OP.has(src[j])) j++;
+            out += '<span class="o">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          out += esc(c);
+          i++;
+        }
+        return out;
+      }
+
+      document.querySelectorAll('div.language-lean pre.highlight > code, pre > code.language-lean').forEach(el => {
+        el.innerHTML = highlight(el.textContent);
+      });
+    })();
+  </script>
+
+  <!-- Solidity highlighter -->
+  <script>
+    (function () {
+      const KW = new Set([
+        'pragma','import','contract','library','interface','abstract','is','using',
+        'function','modifier','event','error','struct','enum','constructor','fallback','receive',
+        'public','private','internal','external','view','pure','payable','virtual','override','returns','return',
+        'if','else','while','do','for','break','continue','try','catch','emit','revert','require','assert',
+        'mapping','memory','storage','calldata','immutable','constant','indexed','anonymous',
+        'new','delete','this','super','unchecked',
+        'assembly','let','switch','case','default',
+        'true','false'
+      ]);
+      const DECL = new Set(['function','modifier','event','error','struct','enum','contract','library','interface']);
+      const KT_FIXED = new Set(['address','bool','string','bytes','byte','var','fixed','ufixed']);
+      const NB = new Set([
+        'keccak256','sha256','sha3','ripemd160','ecrecover','addmod','mulmod','blockhash','gasleft','selfdestruct','suicide',
+        'add','sub','mul','div','sdiv','mod','smod','exp','lt','gt','slt','sgt','eq','iszero','and','or','xor','not','shl','shr','sar','byte','signextend',
+        'sload','sstore','tload','tstore','mload','mstore','mstore8','msize',
+        'call','callcode','delegatecall','staticcall','create','create2',
+        'log0','log1','log2','log3','log4',
+        'calldataload','calldatasize','calldatacopy','codesize','codecopy','returndatasize','returndatacopy','extcodesize','extcodecopy','extcodehash',
+        'balance','caller','callvalue','origin','gasprice','gas','address','chainid','timestamp','number','coinbase','difficulty','prevrandao','gaslimit','basefee','blobbasefee','blobhash','selfbalance',
+        'pop','dup1','swap1','jump','jumpi','jumpdest','stop'
+      ]);
+      const idStart = /[A-Za-z_$]/;
+      const idCont  = /[A-Za-z0-9_$]/;
+      const isType = w => KT_FIXED.has(w) || /^(u?int|bytes)(\d+)?$/.test(w);
+      const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+      function highlight(src) {
+        let i = 0, out = '';
+        let pendingDecl = false;
+        while (i < src.length) {
+          const c = src[i], n = src[i+1];
+          if (c === '/' && n === '*') {
+            let j = i + 2;
+            while (j < src.length - 1 && !(src[j] === '*' && src[j+1] === '/')) j++;
+            j = Math.min(j + 2, src.length);
+            out += '<span class="cm">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (c === '/' && n === '/') {
+            let j = i;
+            while (j < src.length && src[j] !== '\n') j++;
+            out += '<span class="c1">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (c === '"' || c === "'") {
+            const q = c;
+            let j = i + 1;
+            while (j < src.length && src[j] !== q) { if (src[j] === '\\') j++; j++; }
+            j = Math.min(j + 1, src.length);
+            out += '<span class="s2">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (c === '0' && (n === 'x' || n === 'X')) {
+            let j = i + 2;
+            while (j < src.length && /[0-9a-fA-F_]/.test(src[j])) j++;
+            out += '<span class="mh">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (/\d/.test(c)) {
+            let j = i;
+            while (j < src.length && /[\d_.eE+\-]/.test(src[j])) {
+              if ((src[j] === '+' || src[j] === '-') && !(src[j-1] === 'e' || src[j-1] === 'E')) break;
+              j++;
+            }
+            out += '<span class="mi">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          if (c === ':' && n === '=') { out += '<span class="o">:=</span>'; i += 2; continue; }
+          if (c === '=' && n === '>') { out += '<span class="o">=&gt;</span>'; i += 2; continue; }
+          if (idStart.test(c)) {
+            let j = i + 1;
+            while (j < src.length && idCont.test(src[j])) j++;
+            const w = src.slice(i, j);
+            let cls;
+            if (KW.has(w))         { cls = 'k';  pendingDecl = DECL.has(w); }
+            else if (isType(w))    { cls = 'kt'; pendingDecl = false; }
+            else if (NB.has(w))    { cls = 'nb'; pendingDecl = false; }
+            else if (pendingDecl)  { cls = 'nf'; pendingDecl = false; }
+            else                   { cls = 'n'; }
+            out += '<span class="' + cls + '">' + esc(w) + '</span>';
+            i = j; continue;
+          }
+          if (/[+\-*/%=<>!&|^~?:]/.test(c)) {
+            let j = i + 1;
+            while (j < src.length && /[+\-*/%=<>!&|^~?:]/.test(src[j])) j++;
+            out += '<span class="o">' + esc(src.slice(i, j)) + '</span>';
+            i = j; continue;
+          }
+          out += esc(c);
+          i++;
+        }
+        return out;
+      }
+
+      document.querySelectorAll('div.language-solidity pre.highlight > code, pre > code.language-solidity').forEach(el => {
+        el.innerHTML = highlight(el.textContent);
+        const pre = el.closest('pre');
+        if (pre) pre.classList.add('highlight');
+      });
+    })();
+  </script>
+</body>
+</html>
