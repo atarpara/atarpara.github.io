@@ -9,8 +9,13 @@ layout: default
 <section class="posts-section">
   <h2>Writing</h2>
   {% for post in site.posts %}
-  <a href="{{ post.url | relative_url }}" class="post-entry">
-    <div class="post-title">{{ post.title }}</div>
+  <div class="post-entry" onclick="location.href='{{ post.url | relative_url }}'">
+    <h3 class="post-title">
+      <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
+    </h3>
+    {% if post.description %}
+    <p class="post-excerpt">{{ post.description }}</p>
+    {% endif %}
     <div class="post-meta">
       <time>{{ post.date | date: "%B %-d, %Y" }}</time>
       {% assign words = post.content | number_of_words %}
@@ -26,6 +31,6 @@ layout: default
       {% endfor %}
     </div>
     {% endif %}
-  </a>
+  </div>
   {% endfor %}
 </section>

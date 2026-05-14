@@ -234,7 +234,7 @@ main {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  text-decoration: none;
+  cursor: pointer;
   transition: all var(--transition);
 }
 
@@ -248,14 +248,25 @@ main {
 .post-entry .post-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--text);
-  margin-bottom: 0.35rem;
+  margin: 0 0 0.35rem;
   line-height: 1.4;
+}
+
+.post-entry .post-title a {
+  color: var(--text);
+  text-decoration: none;
   transition: color var(--transition);
 }
 
-.post-entry:hover .post-title {
+.post-entry:hover .post-title a {
   color: var(--accent);
+}
+
+.post-entry .post-excerpt {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
 }
 
 .post-entry .post-meta {

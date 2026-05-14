@@ -10,6 +10,8 @@ github_username: atarpara
 # twitter_username: your_twitter_handle
 
 markdown: kramdown
+kramdown:
+  math_engine: null
 highlighter: rouge
 permalink: /:title
 
@@ -17,3 +19,4 @@ exclude:
   - README.md
   - Gemfile
   - Gemfile.lock
+  - _scripts

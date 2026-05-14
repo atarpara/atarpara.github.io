@@ -29,10 +29,12 @@
     onload="renderMathInElement(document.body, {
       delimiters: [
         {left: '$$', right: '$$', display: true},
-        {left: '$', right: '$', display: false}
+        {left: '\\[', right: '\\]', display: true},
+        {left: '\\(', right: '\\)', display: false}
       ],
-      throwOnError: false
-    });"></script>
+      throwOnError: false,
+      ignoredTags: ['script','noscript','style','textarea','pre','code']
+    }); document.querySelectorAll('script[type^=\"math/tex\"]').forEach(function(el){var d=el.getAttribute('type').indexOf('display')>-1;var s=document.createElement('span');try{katex.render(el.textContent,s,{displayMode:d,throwOnError:false})}catch(e){s.textContent=el.textContent}el.parentNode.replaceChild(s,el)});"></script>
 
   <!-- Styles -->
   <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
