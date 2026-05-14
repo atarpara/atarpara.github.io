@@ -1,15 +1,17 @@
 ---
 layout: post
-title: "Solady's `sqrt`, derived: 80 bytes of `uint256` square root from first principles"
+title: "Solady's sqrt, derived: 80 bytes of uint256 square root from first principles"
 description: "Deriving every constant in Solady's 80-byte assembly sqrt from first principles — Newton's method, quadratic convergence, and why the optimal magic constant is 1."
 tags: [solidity, math, optimization, solady]
 ---
 
-*Deriving every constant in 80 bytes of assembly from first principles.*
+A `uint256` square root in Solidity takes exactly 8 lines of Yul. The implementation shipped in Solady's `FixedPointMathLib` is 80 bytes of bytecode, uses no magic multipliers, unrolls a loop exactly 6 times, and finishes with a single floor correction.
 
-> *tl;dr*: a `uint256` square root in 8 lines of Yul, with every choice justified by math (the \\((n+1)/2\\) formula, no magic multipliers, exactly 6 iterations, and a final correction step). The simple bit-length-based initial guess turns out to be the best you can do — any "magic constant" you might want to multiply by is provably equal to 1.
+If you're building an AMM or doing fixed-point math, you've probably copied this code. But do you know *why* it works?
 
-Take a look at this code:
+In this post, we are going to derive every single choice from scratch, using nothing fancier than high-school algebra. We will prove why the simple bit-length-based initial guess is the best you can do, and why any "magic constant" you might want to multiply it by is provably equal to 1.
+
+Take a look at the code:
 
 ```solidity
 function sqrt(uint256 x) internal pure returns (uint256 z) {
@@ -35,300 +37,365 @@ function sqrt(uint256 x) internal pure returns (uint256 z) {
         z := shr(1, add(z, div(x, z)))
         z := shr(1, add(z, div(x, z)))
         z := shr(1, add(z, div(x, z)))
+
         // Floor correction
         z := sub(z, lt(div(x, z), z))
     }
 }
 ```
 
-Eight lines of assembly. Eighty bytes of bytecode. This is a complete `uint256` square root — and it's the exact implementation shipped in [Solady's `FixedPointMathLib`](https://github.com/Vectorized/solady/blob/a119c6341b80b64979739eb471acf984d8aafb6d/src/utils/clz/FixedPointMathLib.sol#L769-L799) (the CLZ-using variant).
-
-But the code raises questions:
-
-- What is that first line doing?
-- Why are there exactly 6 copies of the same line?
-- Why no multipliers, no magic numbers, no clever bit tricks?
-- What's the last line for?
-
-Every Solidity codebase doing AMMs, fixed-point math, or geometric means needs \\(\sqrt{x}\\). People copy this code (or write something similar) without knowing why each piece is there.
-
-In this post, we'll derive every single choice from scratch. By the end, you'll understand each line and know exactly why it can't be made shorter, faster, or simpler without breaking something.
-
-The headline result, hidden in plain sight: **square root has a symmetry that makes the obvious "multiply by a magic constant" optimization useless**. The best constant is 1 — that is, no multiplier at all. We'll see why.
+Eight lines of assembly. Eighty bytes. Let's break down exactly why it can't be shorter, faster, or simpler.
 
 ---
 
-## What the code is doing — a quick tour
+## A quick tour of the code
 
-Before diving into the math, let's read the code from top to bottom.
+Before diving into the math, here is what each part is doing.
 
 ```solidity
-// z0 = 2^(n+1)/2
-// where n = log2(x) and log2(x) = 255 - clz(x)
 z := shl(shr(1, sub(256, clz(x))), 1)
 ```
 
-This computes an **initial guess** for \\(\sqrt{x}\\). It's a single line that:
+This first line computes an **initial guess** for \\(\sqrt{x}\\). It does three things:
 
 1. Finds the bit length of \\(x\\) (how many bits are needed to represent it).
 2. Halves that bit length.
 3. Computes 2 raised to that halved bit length.
 
-So if \\(x\\) has 100 bits, the initial guess \\(z\\) is \\(2^{50}\\). This gets us roughly in the right ballpark — close to \\(\sqrt{x}\\) but not exact.
+If \\(x\\) has 100 bits, the initial guess \\(z\\) is \\(2^{50}\\). This gets us close to \\(\sqrt{x}\\), but it's not exact.
 
 ```solidity
 z := shr(1, add(z, div(x, z)))
 ```
 
-This is the **Babylonian update**: replace \\(z\\) with \\((z + x/z) / 2\\). It improves the guess. The `shr(1, ...)` is divide-by-2; the `div(x, z)` is \\(x/z\\); the `add(...)` combines them.
-
-Why does this work? If \\(z\\) is too big, \\(x/z\\) is too small. If \\(z\\) is too small, \\(x/z\\) is too big. Averaging them gets us closer to \\(\sqrt{x}\\). We do this 6 times.
+This is the **Babylonian update**. It replaces \\(z\\) with \\((z + x/z) / 2\\). If \\(z\\) is too big, \\(x/z\\) is too small. If \\(z\\) is too small, \\(x/z\\) is too big. Averaging them gets us closer to the true square root. The code repeats this line exactly 6 times.
 
 ```solidity
 z := sub(z, lt(div(x, z), z))
 ```
 
-This is the **final correction**. Because we're doing integer math (no decimals), the iteration sometimes ends one above the true answer. This line checks if that happened and subtracts 1 if so.
+This is the **final correction**. Because we are doing integer math without decimals, the iteration sometimes ends one number higher than the true answer. This line checks if that happened, and subtracts 1 if it did.
 
-That's the whole thing. Now let's understand *why* each piece looks the way it does.
-
----
-
-## How much precision do we actually need?
-
-Before deriving anything, let's figure out the target. We want \\(\lfloor\sqrt{x}\rfloor\\) for any \\(x \in [0, 2^{256})\\).
-
-The biggest possible result:
-
-$$\lfloor\sqrt{2^{256} - 1}\rfloor = 2^{128} - 1$$
-
-So the answer always fits in **at most 128 bits**. No matter how clever we get, we never need more than 128 bits of precision.
-
-This is going to be our target throughout. Six iterations is the right number precisely because **6 iterations gets us to 128+ bits of accuracy** — no more, no less. We'll verify this once we have the error analysis.
-
-(Solady's own code comment confirms this: *"6 steps yield \\(2^{-160}\\) relative error (>128 correct bits)"*.)
+That's the whole algorithm. Now let's understand the math behind it.
 
 ---
 
-## The Newton iteration
+## Why 128 bits of precision is exactly enough
 
-We want \\(z\\) such that \\(z^2 = x\\). Equivalently, find the root of \\(f(z) = z^2 - x\\). Newton-Raphson says:
+We want to find \\(\lfloor\sqrt{x}\rfloor\\) for any \\(x\\) up to \\(2^{256} - 1\\). How big can the answer get?
 
-$$z_{n+1} = z_n - \frac{f(z_n)}{f'(z_n)}$$
+The biggest input is \\(x = 2^{256} - 1\\). Its square root is just under \\(2^{128}\\) — because \\((2^{128})^2 = 2^{256}\\). So:
 
-With \\(f(z) = z^2 - x\\) and \\(f'(z) = 2z\\):
+\[
+\lfloor\sqrt{2^{256} - 1}\rfloor = 2^{128} - 1
+\]
 
-$$z_{n+1} = z_n - \frac{z_n^2 - x}{2z_n} = \frac{z_n}{2} + \frac{x}{2z_n} = \frac{z_n + x/z_n}{2}$$
+The answer always fits in **at most 128 bits**. We never need more than 128 bits of precision. That's our target.
 
-This is the **Babylonian method** — 4,000 years older than calculus. The ancient Babylonians figured it out by intuition; Newton gave us the proof.
-
-The intuition: if \\(z_n > \sqrt{x}\\), then \\(x/z_n < \sqrt{x}\\). One overshoots, one undershoots. The average lands closer to the truth than either. Repeat, and you converge quickly.
-
-In the Yul above, each line `z := shr(1, add(z, div(x, z)))` does exactly this: \\((z + x/z) / 2\\).
+Spoiler: 6 iterations gets us exactly there, with a little safety margin.
 
 ---
 
-## Ratio: a clean way to measure error
+## The Babylonian method: a 4000-year-old trick
 
-How wrong is our guess? The absolute error \\(|z - \sqrt{x}|\\) doesn't tell the whole story — an error of 0.1 is huge when \\(\sqrt{x} = 1\\) but tiny when \\(\sqrt{x} = 10^{18}\\). We need a **scale-free** measure.
+Here is an ancient algorithm. To find \\(\sqrt{x}\\):
 
-Define the **ratio**:
+1. Guess any positive number \\(z\\).
+2. Compute \\((z + x/z) / 2\\). This is your new guess.
+3. Repeat until you're happy.
 
-$$r = \frac{z}{\sqrt{x}}$$
+The Babylonians used this 4000 years ago, long before calculus existed. Why does it work?
 
-This is a single number that tells us how far off we are, regardless of how big \\(x\\) is:
+**The intuition.** Suppose you're trying to find \\(\sqrt{100}\\), and you guess \\(z = 25\\). That's way too big. Now compute \\(x/z = 100/25 = 4\\). That's way too small.
 
-- \\(r = 1\\) means perfect
-- \\(r = 1.1\\) means we're 10% too big
-- \\(r = 0.9\\) means we're 10% too small
+But here's the thing: the *product* of these two numbers is always exactly \\(x\\). \\(25 \times 4 = 100\\). So whenever one is too big, the other is too small by a complementary amount. Their average lands much closer to \\(\sqrt{x}\\) than either one alone.
 
-For Newton's analysis, it's useful to track the **relative error**:
+\\((25 + 4)/2 = 14.5\\), which is closer to the true answer of 10 than either 25 or 4 was. Run the iteration again: \\(100/14.5 \approx 6.9\\), average gives \\(\approx 10.7\\). Two more steps and you've nailed it.
 
-$$\varepsilon = r - 1$$
+### The same formula, from calculus
 
-Same info, shifted so \\(\varepsilon = 0\\) is perfect. Positive \\(\varepsilon\\) means overestimate; negative \\(\varepsilon\\) means underestimate.
+If you have calculus, here's the modern derivation. We want \\(z\\) such that \\(z^2 = x\\), which means finding where the function \\(f(z) = z^2 - x\\) equals zero. Newton-Raphson says: from any guess \\(z_n\\), the next guess is
 
-### Converting between error and bits of accuracy
+\[
+z_{n+1} = z_n - \frac{f(z_n)}{f'(z_n)}
+\]
 
-A common question: "if my error is \\(\varepsilon\\), how many correct bits do I have?"
+(If derivatives are new to you: \\(f'(z)\\) just means the slope of \\(f\\) at the point \\(z\\). For \\(f(z) = z^2 - x\\), the slope is \\(f'(z) = 2z\\). You can take this on faith or look up the power rule.)
 
-The formula is:
+Substituting:
 
-$$\text{bits} = -\log_2(|\varepsilon|)$$
+\[
+z_{n+1} = z_n - \frac{z_n^2 - x}{2z_n}
+\]
 
-In words: take the absolute error, take its log base 2, flip the sign. Each "halving" of the error adds one bit of accuracy.
+Let's simplify. Get a common denominator on the right:
 
-| \\(\|\varepsilon\|\\) | Bits of accuracy |
+\[
+z_{n+1} = \frac{2z_n^2 - (z_n^2 - x)}{2z_n} = \frac{z_n^2 + x}{2z_n}
+\]
+
+Split the fraction:
+
+\[
+z_{n+1} = \frac{z_n^2}{2z_n} + \frac{x}{2z_n} = \frac{z_n}{2} + \frac{x}{2z_n} = \frac{1}{2}\left(z_n + \frac{x}{z_n}\right)
+\]
+
+That's exactly the Babylonian formula. The ancients beat Newton by ~3500 years.
+
+In the Yul code, the line `z := shr(1, add(z, div(x, z)))` is doing precisely \\((z + x/z)/2\\) — `div(x, z)` is \\(x/z\\), `add(z, ...)` adds it to \\(z\\), and `shr(1, ...)` shifts right by 1 bit, which is division by 2.
+
+---
+
+## Measuring error with the ratio
+
+How wrong is our guess? The absolute error \\(\lvert z - \sqrt{x} \rvert\\) doesn't help much. Being off by 0.1 is huge if the true answer is 1, but tiny if the true answer is a billion. We need a scale-free measure.
+
+Let's define the **ratio**:
+
+\[
+r = \frac{z}{\sqrt{x}}
+\]
+
+This tells us how far off we are, regardless of the size of \\(x\\):
+
+- \\(r = 1\\) means perfect.
+- \\(r = 1.1\\) means we are 10% too big.
+- \\(r = 0.9\\) means we are 10% too small.
+
+We can also track the **relative error**:
+
+\[
+\varepsilon = r - 1
+\]
+
+Here, \\(\varepsilon = 0\\) is perfect. Positive means overestimate, negative means underestimate.
+
+How does error translate to bits of accuracy? Each time you cut the error in half, you gain one bit of accuracy. So:
+
+\[
+\text{bits of accuracy} = -\log_2(\lvert\varepsilon\rvert)
+\]
+
+The minus sign is there because errors are less than 1, which makes their log negative. A few reference values:
+
+| \\(\lvert\varepsilon\rvert\\) | Bits of accuracy |
 |---|---|
 | 0.5 | 1 |
 | 0.25 | 2 |
-| 0.1 | 3.32 |
 | 0.01 | 6.64 |
-| 0.001 | 9.97 |
 | \\(10^{-6}\\) | ~20 |
 | \\(10^{-12}\\) | ~40 |
-| \\(10^{-25}\\) | ~83 |
 | \\(2^{-128}\\) | 128 |
 
-When we say "we need 128 bits of accuracy," that means \\(|\varepsilon| \le 2^{-128} \approx 3 \times 10^{-39}\\). That's our target.
+To get 128 bits of accuracy, we need \\(\lvert\varepsilon\rvert \le 2^{-128} \approx 3 \times 10^{-39}\\). That's a *tiny* number, but we'll see it's achievable.
 
 ---
 
-## Deriving the ratio recurrence
+## Rewriting the iteration in terms of the ratio
 
-Newton in terms of \\(z\\):
+This step is going to seem like a random change of variables, but it pays off enormously. We're going to rewrite the Newton iteration so it doesn't mention \\(x\\) at all.
 
-$$z_{n+1} = \frac{z_n + x/z_n}{2}$$
+Start with:
 
-We want this in terms of \\(r\\). Substitute \\(z = r \cdot \sqrt{x}\\) on both sides:
+\[
+z_{n+1} = \frac{z_n + x/z_n}{2}
+\]
 
-$$r_{n+1} \cdot \sqrt{x} = \frac{r_n \cdot \sqrt{x} + x / (r_n \cdot \sqrt{x})}{2}$$
+Substitute \\(z = r \cdot \sqrt{x}\\) on both sides. On the left:
 
-The second term inside the parentheses simplifies. Since \\(x = \sqrt{x} \cdot \sqrt{x}\\):
+\[
+z_{n+1} = r_{n+1} \cdot \sqrt{x}
+\]
 
-$$\frac{x}{r_n \cdot \sqrt{x}} = \frac{\sqrt{x} \cdot \sqrt{x}}{r_n \cdot \sqrt{x}} = \frac{\sqrt{x}}{r_n}$$
+On the right, the first term becomes \\(r_n \cdot \sqrt{x}\\). The second term \\(x/z_n\\) becomes \\(x / (r_n \cdot \sqrt{x})\\). Simplify this: since \\(x = \sqrt{x} \cdot \sqrt{x}\\), we get
 
-So:
+\[
+\frac{x}{r_n \sqrt{x}} = \frac{\sqrt{x} \cdot \sqrt{x}}{r_n \sqrt{x}} = \frac{\sqrt{x}}{r_n}
+\]
 
-$$r_{n+1} \cdot \sqrt{x} = \frac{\sqrt{x} \cdot (r_n + 1/r_n)}{2}$$
+Putting it all together:
+
+\[
+r_{n+1} \cdot \sqrt{x} = \frac{r_n \cdot \sqrt{x} + \sqrt{x}/r_n}{2} = \sqrt{x} \cdot \frac{r_n + 1/r_n}{2}
+\]
 
 Divide both sides by \\(\sqrt{x}\\):
 
-$$\boxed{r_{n+1} = \frac{r_n + 1/r_n}{2}}$$
+\[
+r_{n+1} = \frac{r_n + 1/r_n}{2}
+\]
 
-**The \\(x\\) disappeared.** The convergence depends only on the ratio, not on how big \\(x\\) is. This is huge — it means whatever worst-case behavior we find applies equally to \\(\sqrt{4}\\) and \\(\sqrt{10^{60}}\\).
+**Look at what just happened: \\(x\\) disappeared.** The recurrence for the ratio is completely independent of \\(x\\). The way our error shrinks for \\(\sqrt{4}\\) is identical to the way it shrinks for \\(\sqrt{10^{60}}\\). One worst-case analysis covers every input.
 
-Look at this map: \\(g(r) = (r + 1/r) / 2\\). Notice that \\(g(r) = g(1/r)\\). That is: feeding it \\(r = 2\\) gives the same answer as feeding it \\(r = 1/2\\). The map is symmetric — it "folds" the positive numbers around \\(r = 1\\).
+### A symmetry hiding in the formula
 
-**This symmetry is going to rule out a whole class of optimizations** in a moment.
+Define \\(g(r) = (r + 1/r)/2\\), the function the iteration applies to the ratio. Notice something: \\(g(r) = g(1/r)\\). Let's check with numbers:
 
----
+- \\(g(2) = (2 + 0.5)/2 = 1.25\\)
+- \\(g(1/2) = (0.5 + 2)/2 = 1.25\\)
 
-## The exact error formula
+Same answer. Try any other pair:
 
-We've worked with \\(r\\). Now let's substitute \\(r = 1 + \varepsilon\\):
+- \\(g(4) = (4 + 0.25)/2 = 2.125\\)
+- \\(g(1/4) = (0.25 + 4)/2 = 2.125\\)
 
-$$r_{n+1} = \frac{(1 + \varepsilon_n) + 1/(1 + \varepsilon_n)}{2}$$
+The function treats \\(r\\) and \\(1/r\\) identically. Intuitively: if you're off by a factor of 2 in one direction, or off by a factor of 2 in the other direction, Newton's method corrects you the same amount either way.
 
-Combine over a common denominator:
-
-$$r_{n+1} = \frac{(1 + \varepsilon_n)^2 + 1}{2(1 + \varepsilon_n)} = \frac{2 + 2\varepsilon_n + \varepsilon_n^2}{2(1 + \varepsilon_n)}$$
-
-Subtract 1 to get \\(\varepsilon_{n+1}\\):
-
-$$\varepsilon_{n+1} = \frac{2 + 2\varepsilon_n + \varepsilon_n^2 - 2 - 2\varepsilon_n}{2(1 + \varepsilon_n)}$$
-
-$$\boxed{\varepsilon_{n+1} = \frac{\varepsilon_n^2}{2(1 + \varepsilon_n)}}$$
-
-This is **exact**, not an approximation. Three things it tells us:
-
-**1. After one Newton step, you're always at an overestimate.** \\(\varepsilon^2\\) is always non-negative, and \\((1 + \varepsilon)\\) is always positive (for valid \\(\varepsilon > -1\\)). So \\(\varepsilon_{n+1} \ge 0\\) no matter what. This is the AM-GM inequality in disguise — the arithmetic mean of two positive numbers is always at least their geometric mean.
-
-**2. The error squares.** For small \\(\varepsilon\\), the formula is roughly \\(\varepsilon_{n+1} \approx \varepsilon^2/2\\). The new error is the *square* of the old, halved. This is called **quadratic convergence**.
-
-**3. Bits roughly double per step.** Taking \\(-\log_2\\) of both sides: \\(\text{bits}_{n+1} \approx 2 \cdot \text{bits}_n + 1\\). Each step doubles your correct bits and adds one extra (from the \\(/2\\)).
-
-That last point determines the iteration count. Starting with \\(b\\) bits of accuracy, after \\(k\\) iterations we have approximately:
-
-$$\text{bits\_after\_k} = 2^k \cdot b + (2^k - 1)$$
-
-We need 128 bits. Solving:
-
-| Iterations \\(k\\) | Required starting bits \\(b\\) |
-|---|---|
-| 7 | < 1 (basically anything works) |
-| 6 | ~1 |
-| 5 | ~3 |
-| 4 | ~7 |
-
-So 6 iterations needs about 1 bit of starting accuracy. Let's see if our initial guess gives us that.
+**This symmetry is the thing that's going to kill the magic-constant optimization.** Hold that thought.
 
 ---
 
-## The initial guess: \\(2^{\lfloor(n+1)/2\rfloor}\\)
+## The exact error formula, step by step
 
-In Yul:
+We have the recurrence in terms of \\(r\\). Now let's write it in terms of the error \\(\varepsilon\\). Substitute \\(r_n = 1 + \varepsilon_n\\) into \\(r_{n+1} = (r_n + 1/r_n)/2\\):
+
+\[
+1 + \varepsilon_{n+1} = \frac{(1 + \varepsilon_n) + \dfrac{1}{1 + \varepsilon_n}}{2}
+\]
+
+Combine the right side over a common denominator. The numerator becomes \\((1 + \varepsilon_n)^2 + 1\\):
+
+\[
+1 + \varepsilon_{n+1} = \frac{(1 + \varepsilon_n)^2 + 1}{2(1 + \varepsilon_n)}
+\]
+
+Expand \\((1 + \varepsilon_n)^2 = 1 + 2\varepsilon_n + \varepsilon_n^2\\):
+
+\[
+1 + \varepsilon_{n+1} = \frac{1 + 2\varepsilon_n + \varepsilon_n^2 + 1}{2(1 + \varepsilon_n)} = \frac{2 + 2\varepsilon_n + \varepsilon_n^2}{2(1 + \varepsilon_n)}
+\]
+
+Subtract 1 from both sides. On the right, 1 is the same as \\(\frac{2(1 + \varepsilon_n)}{2(1 + \varepsilon_n)} = \frac{2 + 2\varepsilon_n}{2(1 + \varepsilon_n)}\\):
+
+\[
+\varepsilon_{n+1} = \frac{2 + 2\varepsilon_n + \varepsilon_n^2}{2(1 + \varepsilon_n)} - \frac{2 + 2\varepsilon_n}{2(1 + \varepsilon_n)} = \frac{\varepsilon_n^2}{2(1 + \varepsilon_n)}
+\]
+
+So:
+
+\[
+\boxed{\;\varepsilon_{n+1} = \frac{\varepsilon_n^2}{2(1 + \varepsilon_n)}\;}
+\]
+
+This formula is **exact** — no approximations. It tells us three crucial things:
+
+**1. After the first step, you always overestimate.** The numerator \\(\varepsilon_n^2\\) is non-negative (it's a square), and the denominator \\(2(1 + \varepsilon_n)\\) is positive as long as \\(\varepsilon_n > -1\\), which holds as long as our guess is positive. So \\(\varepsilon_{n+1} \ge 0\\) always. The first Babylonian step pushes us above \\(\sqrt{x}\\), and we stay there forever.
+
+**2. The error roughly squares each step.** When \\(\varepsilon_n\\) is small, the denominator \\(2(1 + \varepsilon_n) \approx 2\\), so
+
+\[
+\varepsilon_{n+1} \approx \frac{\varepsilon_n^2}{2}
+\]
+
+If \\(\varepsilon_n = 0.01\\), then \\(\varepsilon_{n+1} \approx 0.00005\\). Squaring a small number makes it dramatically smaller. This is called **quadratic convergence**.
+
+**3. Bits of accuracy roughly double per step.** Why? Take \\(-\log_2\\) of both sides of the approximate formula. \\(\log_2(\varepsilon^2/2) = 2\log_2(\varepsilon) - 1\\), so
+
+\[
+-\log_2(\varepsilon_{n+1}) \approx 2 \cdot (-\log_2(\varepsilon_n)) + 1
+\]
+
+In words: the number of correct bits doubles and gains one. Starting at 1 bit, you go \\(1 \to 3 \to 7 \to 15 \to 31 \to 63 \to 127\\). Six steps and you've crossed 128. (The actual numbers come out slightly better — we'll trace them shortly.)
+
+This explains why exactly 6 iterations is right: starting from "around 1 bit of accuracy," 6 steps gets us past 128.
+
+---
+
+## Why the initial guess is half the bit length
+
+Here's the Yul code for the initial guess again:
 
 ```solidity
 z := shl(shr(1, sub(256, clz(x))), 1)
 ```
 
-Reading it:
+Reading the opcodes:
 
-- `clz(x)` = count of leading zeros in \\(x\\)
-- `sub(256, clz(x))` = the bit length of \\(x\\) (= \\(n + 1\\), where \\(n = \lfloor\log_2(x)\rfloor\\))
-- `shr(1, ...)` = divide by 2 (floor)
-- `shl(..., 1)` = shift `1` left by that many bits, i.e., raise 2 to that power
+- `clz(x)` is the **c**ount of **l**eading **z**eros in \\(x\\)'s 256-bit representation.
+- `sub(256, clz(x))` is therefore the bit length of \\(x\\) — call it \\(n+1\\) where \\(n = \lfloor\log_2(x)\rfloor\\).
+- `shr(1, ...)` divides by 2 (right-shift by 1).
+- `shl(..., 1)` shifts the value 1 left by that many positions, raising 2 to that power.
 
-So \\(z_0 = 2^{\lfloor(n+1)/2\rfloor}\\). In plain English: take the bit length of \\(x\\), halve it (rounding down), and raise 2 to that. This puts us in roughly the right ballpark.
+The whole expression computes \\(z_0 = 2^{\lfloor(n+1)/2\rfloor}\\).
 
-How accurate is it? Let's check by parity of \\(n\\):
+**Why this is a good guess.** If \\(x\\) is around \\(2^n\\), then \\(\sqrt{x}\\) is around \\(2^{n/2}\\). The bit-length trick gives us a power of 2 that's within a factor of \\(\sqrt{2}\\) of the true answer.
 
-| \\(n\\) | \\(z_0\\) | \\(\sqrt{x}\\) range | \\(r_0 = z_0/\sqrt{x}\\) range |
-|---|---|---|---|
-| even (\\(= 2k\\)) | \\(2^k\\) | \\([2^k, 2^k\sqrt{2})\\) | \\((1/\sqrt{2}, 1]\\) |
-| odd (\\(= 2k+1\\)) | \\(2^{k+1}\\) | \\([2^k\sqrt{2}, 2^{k+1})\\) | \\((1, \sqrt{2}]\\) |
+Let's check the worst case. There are two cases depending on whether \\(n\\) is even or odd:
 
-Combined: \\(r_0 \in (1/\sqrt{2},\; \sqrt{2}]\\). Worst-case \\(|\varepsilon_0| = \sqrt{2} - 1 \approx 0.4142\\), which in bits is:
+| If \\(n\\) is... | then \\(x\\) lies in... | \\(\sqrt{x}\\) lies in... | \\(z_0\\) is... | ratio \\(r_0 = z_0/\sqrt{x}\\) lies in... |
+|---|---|---|---|---|
+| even (\\(n = 2k\\)) | \\([2^{2k}, 2^{2k+1})\\) | \\([2^k, 2^k\sqrt{2})\\) | \\(2^k\\) | \\((1/\sqrt{2}, 1]\\) |
+| odd (\\(n = 2k+1\\)) | \\([2^{2k+1}, 2^{2k+2})\\) | \\([2^k\sqrt{2}, 2^{k+1})\\) | \\(2^{k+1}\\) | \\((1, \sqrt{2}]\\) |
 
-$$\text{bits} = -\log_2(0.4142) \approx 1.27$$
+Combining both cases: \\(r_0 \in (1/\sqrt{2}, \sqrt{2}]\\). The farthest we can be from 1 is by a factor of \\(\sqrt{2}\\) in either direction, so the worst-case error is
 
-That's enough. Six iterations from here will reach 128 bits. We'll verify the trace shortly.
+\[
+\lvert\varepsilon_0\rvert = \sqrt{2} - 1 \approx 0.4142
+\]
 
----
+How many bits of accuracy is that?
 
-## The optimization that doesn't work: magic constants
+\[
+-\log_2(0.4142) \approx 1.27
+\]
 
-A natural thought: "what if I multiply the initial guess by some constant \\(c\\) to tighten the worst case?"
-
-If we replace \\(z_0 = 2^{\lfloor(n+1)/2\rfloor}\\) with \\(z_0' = c \cdot 2^{\lfloor(n+1)/2\rfloor}\\), the ratio range becomes \\((c/\sqrt{2},\; c\sqrt{2}]\\). We want to pick \\(c\\) to minimize the worst-case error after one Newton step.
-
-The two extremes give:
-
-$$\varepsilon_{1,\text{high}} \;(\text{from } r = c\sqrt{2}):\quad \frac{(c\sqrt{2} - 1)^2}{2c\sqrt{2}}$$
-
-$$\varepsilon_{1,\text{low}} \;(\text{from } r = c/\sqrt{2}):\quad \frac{(1 - c/\sqrt{2})^2}{2c/\sqrt{2}}$$
-
-Set them equal. Let \\(\beta = c/\sqrt{2}\\):
-
-$$\frac{(2\beta - 1)^2}{2 \cdot 2\beta} = \frac{(1 - \beta)^2}{2\beta}$$
-
-$$(2\beta - 1)^2 = 2(1 - \beta)^2$$
-
-$$4\beta^2 - 4\beta + 1 = 2 - 4\beta + 2\beta^2$$
-
-$$2\beta^2 = 1 \implies \beta = \frac{1}{\sqrt{2}}$$
-
-So \\(c = \beta \cdot \sqrt{2} = 1\\).
-
-**The best constant is 1. That means no multiplier at all.**
-
-This isn't a coincidence — it's the symmetry \\(g(r) = g(1/r)\\) showing up again. The two extremes \\(c\sqrt{2}\\) and \\(c/\sqrt{2}\\) are mirror images around 1, and the Newton map treats them identically when \\(c = 1\\). Any other value of \\(c\\) makes the worst case strictly worse, not better.
-
-This is why Solady's sqrt has no magic multiplier — there's literally no constant that would help. Cube root, on the other hand, has an asymmetric Newton map that *does* benefit from magic constants. You can see this in [Solady's `cbrt`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L805-L831): it uses the constant `0x90b5e5` (which decodes to bytes 144, 181, 229) as per-residue multipliers indexed by \\(n \bmod 3\\). That's a separate post.
+We start with about 1.27 bits of accuracy. With quadratic convergence, 6 iterations will take us past 128. We'll verify this shortly.
 
 ---
 
-## How many iterations? Six.
+## Why magic constants don't work for square roots
 
-Worst case \\(|\varepsilon_0| = \sqrt{2} - 1\\). By symmetry, both cases (even and odd \\(n\\)) produce the same \\(\varepsilon_1\\), which we compute using [the exact error formula](#the-exact-error-formula) derived earlier:
+A natural optimization to try: "What if I multiply the initial guess by some clever constant \\(c\\) to tighten the worst case?"
 
-$$\varepsilon_{n+1} = \frac{\varepsilon_n^2}{2(1 + \varepsilon_n)}$$
+If we use \\(z_0' = c \cdot 2^{\lfloor(n+1)/2\rfloor}\\) instead, the ratio range shifts from \\((1/\sqrt{2}, \sqrt{2}]\\) to \\((c/\sqrt{2}, c\sqrt{2}]\\). The question is: which value of \\(c\\) gives the smallest worst-case error after one Newton step?
 
-Plugging in \\(\varepsilon_n = \sqrt{2} - 1\\):
+Recall the symmetry: \\(g(r) = g(1/r)\\). The Newton map produces the same error for \\(r\\) and \\(1/r\\). So when looking at the worst-case point in our range, the *minimum possible worst-case* happens when the two endpoints of the range are reflections of each other across \\(r = 1\\) — meaning one endpoint equals \\(1/\\)(the other).
 
-$$\varepsilon_1 = \frac{(\sqrt{2} - 1)^2}{2(1 + \sqrt{2} - 1)} = \frac{3 - 2\sqrt{2}}{2\sqrt{2}} = \frac{3\sqrt{2} - 4}{4} \approx 0.0607$$
+So we need:
 
-Step by step:
+\[
+c\sqrt{2} = \frac{1}{c/\sqrt{2}}
+\]
 
-- Numerator: \\((\sqrt{2} - 1)^2 = 2 - 2\sqrt{2} + 1 = 3 - 2\sqrt{2}\\)
-- Denominator: \\(2(1 + \sqrt{2} - 1) = 2\sqrt{2}\\)
-- Divide: \\((3 - 2\sqrt{2}) / (2\sqrt{2})\\)
-- Rationalize by multiplying top and bottom by \\(\sqrt{2}\\): \\((3\sqrt{2} - 4) / 4 \approx 0.0607\\)
+Solving:
 
-This matches Solady's code comment exactly: *"This seed gives \\(\varepsilon_1 = 0.0607\\) after one Babylonian step for all inputs."*
+\[
+c\sqrt{2} \cdot \frac{c}{\sqrt{2}} = 1 \quad\Longrightarrow\quad c^2 = 1 \quad\Longrightarrow\quad c = 1
+\]
 
-The full trace:
+**The best magic constant is 1. You shouldn't multiply by anything.**
+
+To see why no other choice can do better, consider \\(c > 1\\). Then the high end \\(c\sqrt{2}\\) gets further from 1 (worse), while the low end \\(c/\sqrt{2}\\) gets closer to 1 (better). But the worst case is dominated by whichever endpoint is *further* from 1. Pushing one endpoint closer at the cost of pushing the other further can only hurt. Symmetric case for \\(c < 1\\).
+
+This is purely a consequence of \\(g(r) = g(1/r)\\). Newton's iteration for square root is *symmetric in over- and under-estimates*. Any imbalance you introduce gets punished.
+
+(Cube root, as we'll see at the end, has *no such symmetry* — and that's why cube root code has magic constants while square root code doesn't.)
+
+---
+
+## Why exactly 6 iterations?
+
+Let's verify the iteration count by tracing the worst case. We start with \\(\varepsilon_0 = \sqrt{2} - 1\\). Apply the exact formula:
+
+\[
+\varepsilon_1 = \frac{(\sqrt{2} - 1)^2}{2(1 + (\sqrt{2} - 1))} = \frac{(\sqrt{2} - 1)^2}{2\sqrt{2}}
+\]
+
+Expand the numerator: \\((\sqrt{2} - 1)^2 = 2 - 2\sqrt{2} + 1 = 3 - 2\sqrt{2}\\). So:
+
+\[
+\varepsilon_1 = \frac{3 - 2\sqrt{2}}{2\sqrt{2}}
+\]
+
+Multiply top and bottom by \\(\sqrt{2}\\) to rationalize:
+
+\[
+\varepsilon_1 = \frac{(3 - 2\sqrt{2})\sqrt{2}}{2 \cdot 2} = \frac{3\sqrt{2} - 4}{4} \approx 0.0607
+\]
+
+This matches Solady's comment: *"This seed gives \\(\varepsilon_1 = 0.0607\\) after one Babylonian step for all inputs."*
+
+Here is the full trace, applying \\(\varepsilon_{n+1} = \varepsilon_n^2/(2(1 + \varepsilon_n))\\) repeatedly:
 
 | Step | \\(\varepsilon\\) | Bits |
 |---|---|---|
@@ -340,93 +407,89 @@ The full trace:
 | 5 | \\(6.49 \times 10^{-25}\\) | 80.34 |
 | 6 | \\(2.10 \times 10^{-49}\\) | **161.68** ✓ |
 
-Six iterations reach 161 bits — comfortably past our 128-bit target.
+Six iterations get us to 161 bits of accuracy. This comfortably exceeds our 128-bit requirement.
 
-**This is why the loop is unrolled exactly 6 times**, not 5 (which leaves us at 80 bits, under target) and not 7 (which is wasted bytecode). Six is the smallest number that works.
+- **5 iterations** would leave us at 80 bits — not enough.
+- **7 iterations** would give us 323 bits — wasted gas.
+- **6 iterations** is the smallest number that suffices.
 
-The extra buffer between 161 and 128 isn't waste — it's the safety margin that absorbs small integer-arithmetic effects so the final correction step works cleanly.
+The extra padding (from 128 to 161) is a safety margin that absorbs the small rounding effects of integer division, so the final correction step works cleanly.
 
 ---
 
-## The floor correction
+## The subtle floor correction for perfect-square neighbors
 
-The last line:
+The final line:
 
 ```solidity
 z := sub(z, lt(div(x, z), z))
 ```
 
-What does this do? `lt(div(x, z), z)` evaluates to `1` if \\(x/z < z\\), else `0`. Then we subtract that from \\(z\\).
+In words: if `x/z < z`, subtract 1 from \\(z\\). Since `x/z < z` is the same as `x < z²` (multiply both sides by \\(z\\)), this is the same as saying "if \\(z\\) overshot the true square root, fix it."
 
-\\(x/z < z\\) is equivalent to \\(x < z^2\\), which is the same as \\(z > \sqrt{x}\\). So: if \\(z\\) is one above the true floor, subtract 1.
+Why do we need this? Integer Babylonian iteration has a quirk: **when \\(x + 1\\) is a perfect square, the iteration oscillates between two adjacent integers forever.**
 
-**Why is this needed?** Because of a subtle property of integer Babylonian iteration:
+### Walking through the proof for x = 15
 
-> **If \\(x + 1\\) is a perfect square, the iteration cycles between \\(\lfloor\sqrt{x}\rfloor\\) and \\(\lceil\sqrt{x}\rceil\\).**
+True \\(\sqrt{15} \approx 3.873\\). We want \\(\lfloor\sqrt{15}\rfloor = 3\\). Note that \\(15 + 1 = 16 = 4^2\\) — perfect square.
 
-Example. Take \\(x = 15\\). True \\(\sqrt{15} \approx 3.873\\). We want \\(\lfloor\sqrt{15}\rfloor = 3\\). Note \\(x + 1 = 16 = 4^2\\) — we're in the cycling case.
+Starting from \\(z = 4\\) (which is \\(\lceil\sqrt{15}\rceil\\)):
 
-If after 6 iterations we landed at \\(z = 4\\), let's see what happens with another step:
+- Step: \\(z = (4 + \lfloor 15/4 \rfloor)/2 = (4 + 3)/2 = 7/2 = 3\\) (integer division)
 
-```
-z = (4 + 15/4)/2 = (4 + 3)/2 = 3   (drops to 3)
-z = (3 + 15/3)/2 = (3 + 5)/2 = 4   (back up to 4)
-z = (4 + 15/4)/2 = (4 + 3)/2 = 3   (back to 3)
-...
-```
+Now from \\(z = 3\\):
 
-The iteration alternates forever between 3 and 4 in this case. We always want 3, the floor. The correction handles this: when \\(z = 4\\), we have \\(x/z = 15/4 = 3 < 4 = z\\), so `lt(div(x,z), z) = 1`, and we subtract 1 to get 3. ✓
+- Step: \\(z = (3 + \lfloor 15/3 \rfloor)/2 = (3 + 5)/2 = 8/2 = 4\\)
 
-For non-cycling cases (most \\(x\\)), the iteration converges to \\(\lfloor\sqrt{x}\rfloor\\) exactly, and \\(x/z \ge z\\), so the subtraction is 0 and \\(z\\) is unchanged.
+Now from \\(z = 4\\) again: same as before, drops to 3. The iteration ping-pongs between 3 and 4 forever.
 
-This is documented in [Wikipedia's article on integer square root](https://en.wikipedia.org/wiki/Integer_square_root#Using_only_integer_division), and Solady's own comment cites the same source.
+**In general**, for any \\(x = n^2 - 1\\) (one less than a perfect square), the iteration cycles between \\(n - 1\\) and \\(n\\). We can prove it: starting from \\(z = n\\),
 
----
+\[
+\left\lfloor \frac{x}{n} \right\rfloor = \left\lfloor \frac{n^2 - 1}{n} \right\rfloor = \left\lfloor n - \frac{1}{n} \right\rfloor = n - 1
+\]
 
-## What we proved
+So the next value is \\(\lfloor(n + (n-1))/2\rfloor = \lfloor(2n-1)/2\rfloor = n - 1\\). Starting from \\(z = n - 1\\),
 
-Behind 8 lines of assembly, there are 10 non-obvious facts:
+\[
+\left\lfloor \frac{x}{n - 1} \right\rfloor = \left\lfloor \frac{n^2 - 1}{n - 1} \right\rfloor = \left\lfloor n + 1 \right\rfloor = n + 1
+\]
 
-1. **Newton-Raphson \\(z_{n+1} = (z + x/z)/2\\) converges to \\(\sqrt{x}\\)** — Newton's theorem.
-2. **The iteration in ratio form is \\(r_{n+1} = (r + 1/r)/2\\)** — substitute \\(z = r \cdot \sqrt{x}\\) and simplify.
-3. **Initial guess \\(z_0 = 2^{\lfloor(n+1)/2\rfloor}\\) gives \\(|\varepsilon_0| \le \sqrt{2} - 1\\)** — by case analysis on parity of \\(n\\).
-4. **The Newton map has symmetry \\(g(r) = g(1/r)\\)** — by inspection.
-5. **The optimal multiplier is \\(c = 1\\)** — by the symmetry argument.
-6. **Six iterations reach 161 bits from \\(|\varepsilon_0| = \sqrt{2} - 1\\)** — quadratic convergence trace.
-7. **128 bits is the right target** — because \\(\lfloor\sqrt{2^{256} - 1}\rfloor = 2^{128} - 1\\).
-8. **The iteration ends at \\(\lfloor\sqrt{x}\rfloor\\) or \\(\lfloor\sqrt{x}\rfloor + 1\\)** — AM-GM + integer truncation.
-9. **The check `lt(div(x,z), z)` correctly picks the floor** — when \\(z > \sqrt{x}\\), \\(x/z < z\\).
-10. **\\(x = 0\\) is handled by EVM's `div(_, 0) = 0`** — incidental but works.
+So the next value is \\(\lfloor((n-1) + (n+1))/2\rfloor = n\\). Back to \\(n\\), cycle confirmed.
 
-Ten facts. Eight lines. About one per line — which feels right for code that needs to survive a security audit.
+After 6 iterations on a cycling input, we might land on \\(z = n\\), which is one above the floor. The correction line catches it: `x/z = (n²-1)/n = n - 1` (integer division), and `n - 1 < n = z`, so `lt(div(x,z), z) = 1`, and we subtract 1. Floor recovered.
+
+For non-cycling inputs (the vast majority), the iteration converges exactly to \\(\lfloor\sqrt{x}\rfloor\\) with `x/z ≥ z`, so `lt(div(x,z), z) = 0` and the correction is a no-op.
 
 ---
 
-## Why this matters
+## 10 facts in 8 lines
 
-Most posts on sqrt say "use Newton-Raphson, here's the code." That leaves the interesting questions on the table:
+Every single line of this implementation is mathematically justified:
 
-- **Why 6 iterations and not 4?** — Because \\(|\varepsilon_0| \approx 0.41\\) needs 6 steps to reach 128 bits.
-- **Why no magic constant?** — Because the Newton map's symmetry makes \\(c = 1\\) optimal.
-- **Why 128 bits of precision?** — Because the maximum result fits in 128 bits.
-- **Why is the floor correction needed?** — Because of cycle inputs like \\(x = 15\\).
-
-Each is a separate fact with a separate proof. Together they justify every line of the implementation. Once you understand all four, you can also reason about variations: more iterations if you start with a worse initial guess, fewer if you spend bytecode extracting top bits of \\(x\\).
-
-The reference implementation is [Solady's `sqrt`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L769-L799), and the comments in that file (*"\\(\varepsilon_1 = 0.0607\\)"*, *"6 steps yield \\(2^{-160}\\) relative error"*) trace the same derivation we worked through here.
+1. **Newton-Raphson \\(z_{n+1} = (z + x/z)/2\\) converges to \\(\sqrt{x}\\)** — equivalent to the Babylonian method.
+2. **The error recurrence is independent of \\(x\\)** — substituting \\(z = r\sqrt{x}\\) cancels \\(x\\) out.
+3. **The initial guess \\(z_0 = 2^{\lfloor(n+1)/2\rfloor}\\) starts with worst-case error \\(\sqrt{2} - 1 \approx 0.41\\)** — by case analysis on the parity of the bit length.
+4. **The Newton map is symmetric: \\(g(r) = g(1/r)\\)** — verifiable by plugging in numbers.
+5. **Because of this symmetry, the optimal magic constant is exactly 1** — no multiplier can improve the worst case.
+6. **Quadratic convergence roughly doubles the bits of precision each step** — derived from \\(\varepsilon_{n+1} \approx \varepsilon_n^2 / 2\\).
+7. **We only need 128 bits of accuracy** — because the maximum result fits in 128 bits.
+8. **Six iterations reach 161 bits** — easily clearing the 128-bit hurdle, with a safety margin.
+9. **Integer iteration cycles between two adjacent values when \\(x+1\\) is a perfect square** — proved by direct computation.
+10. **The `lt(div(x,z), z)` check catches and corrects the cycle overshoot** — one subtraction is all that's needed.
 
 ---
 
 ## Coming next: cube root
 
-Cube root looks similar:
+What about cube roots? The Newton iteration is similar:
 
-$$z_{n+1} = \frac{2z + x/z^2}{3}$$
+\[
+z_{n+1} = \frac{2z + x/z^2}{3}
+\]
 
-But the \\(1/z^2\\) term **breaks** the symmetry that made sqrt's optimal constant \\(1\\). For cube root, magic constants genuinely help — the optimal per-residue multipliers are \\(144/128\\), \\(181/128\\), \\(228/128\\) (approximately \\(2^{1/6}\\), \\(\sqrt{2}\\), \\(2^{5/6}\\)), and they cut 7 iterations down to 5.
+But the \\(1/z^2\\) term breaks the symmetry we had for square roots. The cube-root error map does **not** satisfy \\(g(r) = g(1/r)\\) — and because of that, magic constants actually work.
 
-This is exactly what you see in [Solady's `cbrt`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L805-L831): the constant `0x90b5e5` packs those three multipliers, indexed by \\(n \bmod 3\\). We'll derive that in the sequel.
+In [Solady's `cbrt`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L805-L831), you'll see the constant `0x90b5e5`. This packs three specific per-residue multipliers into one number, indexed by the bit length mod 3. Those multipliers tighten the initial guess enough that 5 iterations suffice instead of 7.
 
-Cube root also has a smaller precision target. \\(\lfloor\sqrt[3]{2^{256} - 1}\rfloor \approx 2^{85}\\), so we only need ~85 bits of accuracy, not 128. Smaller target + better initial guess = fewer iterations possible.
-
-The key takeaway transfers: **the symmetry of the Newton map decides whether magic constants help**. For sqrt: useless. For cbrt: essential.
+The pattern transfers cleanly: **the symmetry (or asymmetry) of the Newton map decides whether magic constants help.** For square roots, useless. For cube roots, essential. We'll derive the exact values of those multipliers in the sequel.
