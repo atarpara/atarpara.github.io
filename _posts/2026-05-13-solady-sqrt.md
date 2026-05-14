@@ -86,9 +86,9 @@ We want to find \\(\lfloor\sqrt{x}\rfloor\\) for any \\(x\\) up to \\(2^{256} - 
 
 The biggest input is \\(x = 2^{256} - 1\\). Its square root is just under \\(2^{128}\\) — because \\((2^{128})^2 = 2^{256}\\). So:
 
-\[
+$$
 \lfloor\sqrt{2^{256} - 1}\rfloor = 2^{128} - 1
-\]
+$$
 
 The answer always fits in **at most 128 bits**. We never need more than 128 bits of precision. That's our target.
 
@@ -116,29 +116,29 @@ But here's the thing: the *product* of these two numbers is always exactly \\(x\
 
 If you have calculus, here's the modern derivation. We want \\(z\\) such that \\(z^2 = x\\), which means finding where the function \\(f(z) = z^2 - x\\) equals zero. Newton-Raphson says: from any guess \\(z_n\\), the next guess is
 
-\[
+$$
 z_{n+1} = z_n - \frac{f(z_n)}{f'(z_n)}
-\]
+$$
 
 (If derivatives are new to you: \\(f'(z)\\) just means the slope of \\(f\\) at the point \\(z\\). For \\(f(z) = z^2 - x\\), the slope is \\(f'(z) = 2z\\). You can take this on faith or look up the power rule.)
 
 Substituting:
 
-\[
+$$
 z_{n+1} = z_n - \frac{z_n^2 - x}{2z_n}
-\]
+$$
 
 Let's simplify. Get a common denominator on the right:
 
-\[
+$$
 z_{n+1} = \frac{2z_n^2 - (z_n^2 - x)}{2z_n} = \frac{z_n^2 + x}{2z_n}
-\]
+$$
 
 Split the fraction:
 
-\[
+$$
 z_{n+1} = \frac{z_n^2}{2z_n} + \frac{x}{2z_n} = \frac{z_n}{2} + \frac{x}{2z_n} = \frac{1}{2}\left(z_n + \frac{x}{z_n}\right)
-\]
+$$
 
 That's exactly the Babylonian formula. The ancients beat Newton by ~3500 years.
 
@@ -152,9 +152,9 @@ How wrong is our guess? The absolute error \\(\lvert z - \sqrt{x} \rvert\\) does
 
 Let's define the **ratio**:
 
-\[
+$$
 r = \frac{z}{\sqrt{x}}
-\]
+$$
 
 This tells us how far off we are, regardless of the size of \\(x\\):
 
@@ -164,17 +164,17 @@ This tells us how far off we are, regardless of the size of \\(x\\):
 
 We can also track the **relative error**:
 
-\[
+$$
 \varepsilon = r - 1
-\]
+$$
 
 Here, \\(\varepsilon = 0\\) is perfect. Positive means overestimate, negative means underestimate.
 
 How does error translate to bits of accuracy? Each time you cut the error in half, you gain one bit of accuracy. So:
 
-\[
+$$
 \text{bits of accuracy} = -\log_2(\lvert\varepsilon\rvert)
-\]
+$$
 
 The minus sign is there because errors are less than 1, which makes their log negative. A few reference values:
 
@@ -197,33 +197,33 @@ This step is going to seem like a random change of variables, but it pays off en
 
 Start with:
 
-\[
+$$
 z_{n+1} = \frac{z_n + x/z_n}{2}
-\]
+$$
 
 Substitute \\(z = r \cdot \sqrt{x}\\) on both sides. On the left:
 
-\[
+$$
 z_{n+1} = r_{n+1} \cdot \sqrt{x}
-\]
+$$
 
 On the right, the first term becomes \\(r_n \cdot \sqrt{x}\\). The second term \\(x/z_n\\) becomes \\(x / (r_n \cdot \sqrt{x})\\). Simplify this: since \\(x = \sqrt{x} \cdot \sqrt{x}\\), we get
 
-\[
+$$
 \frac{x}{r_n \sqrt{x}} = \frac{\sqrt{x} \cdot \sqrt{x}}{r_n \sqrt{x}} = \frac{\sqrt{x}}{r_n}
-\]
+$$
 
 Putting it all together:
 
-\[
+$$
 r_{n+1} \cdot \sqrt{x} = \frac{r_n \cdot \sqrt{x} + \sqrt{x}/r_n}{2} = \sqrt{x} \cdot \frac{r_n + 1/r_n}{2}
-\]
+$$
 
 Divide both sides by \\(\sqrt{x}\\):
 
-\[
+$$
 r_{n+1} = \frac{r_n + 1/r_n}{2}
-\]
+$$
 
 **Look at what just happened: \\(x\\) disappeared.** The recurrence for the ratio is completely independent of \\(x\\). The way our error shrinks for \\(\sqrt{4}\\) is identical to the way it shrinks for \\(\sqrt{10^{60}}\\). One worst-case analysis covers every input.
 
@@ -249,33 +249,33 @@ The function treats \\(r\\) and \\(1/r\\) identically. Intuitively: if you're of
 
 We have the recurrence in terms of \\(r\\). Now let's write it in terms of the error \\(\varepsilon\\). Substitute \\(r_n = 1 + \varepsilon_n\\) into \\(r_{n+1} = (r_n + 1/r_n)/2\\):
 
-\[
+$$
 1 + \varepsilon_{n+1} = \frac{(1 + \varepsilon_n) + \dfrac{1}{1 + \varepsilon_n}}{2}
-\]
+$$
 
 Combine the right side over a common denominator. The numerator becomes \\((1 + \varepsilon_n)^2 + 1\\):
 
-\[
+$$
 1 + \varepsilon_{n+1} = \frac{(1 + \varepsilon_n)^2 + 1}{2(1 + \varepsilon_n)}
-\]
+$$
 
 Expand \\((1 + \varepsilon_n)^2 = 1 + 2\varepsilon_n + \varepsilon_n^2\\):
 
-\[
+$$
 1 + \varepsilon_{n+1} = \frac{1 + 2\varepsilon_n + \varepsilon_n^2 + 1}{2(1 + \varepsilon_n)} = \frac{2 + 2\varepsilon_n + \varepsilon_n^2}{2(1 + \varepsilon_n)}
-\]
+$$
 
 Subtract 1 from both sides. On the right, 1 is the same as \\(\frac{2(1 + \varepsilon_n)}{2(1 + \varepsilon_n)} = \frac{2 + 2\varepsilon_n}{2(1 + \varepsilon_n)}\\):
 
-\[
+$$
 \varepsilon_{n+1} = \frac{2 + 2\varepsilon_n + \varepsilon_n^2}{2(1 + \varepsilon_n)} - \frac{2 + 2\varepsilon_n}{2(1 + \varepsilon_n)} = \frac{\varepsilon_n^2}{2(1 + \varepsilon_n)}
-\]
+$$
 
 So:
 
-\[
+$$
 \boxed{\;\varepsilon_{n+1} = \frac{\varepsilon_n^2}{2(1 + \varepsilon_n)}\;}
-\]
+$$
 
 This formula is **exact** — no approximations. It tells us three crucial things:
 
@@ -283,17 +283,17 @@ This formula is **exact** — no approximations. It tells us three crucial thing
 
 **2. The error roughly squares each step.** When \\(\varepsilon_n\\) is small, the denominator \\(2(1 + \varepsilon_n) \approx 2\\), so
 
-\[
+$$
 \varepsilon_{n+1} \approx \frac{\varepsilon_n^2}{2}
-\]
+$$
 
 If \\(\varepsilon_n = 0.01\\), then \\(\varepsilon_{n+1} \approx 0.00005\\). Squaring a small number makes it dramatically smaller. This is called **quadratic convergence**.
 
 **3. Bits of accuracy roughly double per step.** Why? Take \\(-\log_2\\) of both sides of the approximate formula. \\(\log_2(\varepsilon^2/2) = 2\log_2(\varepsilon) - 1\\), so
 
-\[
+$$
 -\log_2(\varepsilon_{n+1}) \approx 2 \cdot (-\log_2(\varepsilon_n)) + 1
-\]
+$$
 
 In words: the number of correct bits doubles and gains one. Starting at 1 bit, you go \\(1 \to 3 \to 7 \to 15 \to 31 \to 63 \to 127\\). Six steps and you've crossed 128. (The actual numbers come out slightly better — we'll trace them shortly.)
 
@@ -329,15 +329,15 @@ Let's check the worst case. There are two cases depending on whether \\(n\\) is 
 
 Combining both cases: \\(r_0 \in (1/\sqrt{2}, \sqrt{2}]\\). The farthest we can be from 1 is by a factor of \\(\sqrt{2}\\) in either direction, so the worst-case error is
 
-\[
+$$
 \lvert\varepsilon_0\rvert = \sqrt{2} - 1 \approx 0.4142
-\]
+$$
 
 How many bits of accuracy is that?
 
-\[
+$$
 -\log_2(0.4142) \approx 1.27
-\]
+$$
 
 We start with about 1.27 bits of accuracy. With quadratic convergence, 6 iterations will take us past 128. We'll verify this shortly.
 
@@ -353,15 +353,15 @@ Recall the symmetry: \\(g(r) = g(1/r)\\). The Newton map produces the same error
 
 So we need:
 
-\[
+$$
 c\sqrt{2} = \frac{1}{c/\sqrt{2}}
-\]
+$$
 
 Solving:
 
-\[
+$$
 c\sqrt{2} \cdot \frac{c}{\sqrt{2}} = 1 \quad\Longrightarrow\quad c^2 = 1 \quad\Longrightarrow\quad c = 1
-\]
+$$
 
 **The best magic constant is 1. You shouldn't multiply by anything.**
 
@@ -377,21 +377,21 @@ This is purely a consequence of \\(g(r) = g(1/r)\\). Newton's iteration for squa
 
 Let's verify the iteration count by tracing the worst case. We start with \\(\varepsilon_0 = \sqrt{2} - 1\\). Apply the exact formula:
 
-\[
+$$
 \varepsilon_1 = \frac{(\sqrt{2} - 1)^2}{2(1 + (\sqrt{2} - 1))} = \frac{(\sqrt{2} - 1)^2}{2\sqrt{2}}
-\]
+$$
 
 Expand the numerator: \\((\sqrt{2} - 1)^2 = 2 - 2\sqrt{2} + 1 = 3 - 2\sqrt{2}\\). So:
 
-\[
+$$
 \varepsilon_1 = \frac{3 - 2\sqrt{2}}{2\sqrt{2}}
-\]
+$$
 
 Multiply top and bottom by \\(\sqrt{2}\\) to rationalize:
 
-\[
+$$
 \varepsilon_1 = \frac{(3 - 2\sqrt{2})\sqrt{2}}{2 \cdot 2} = \frac{3\sqrt{2} - 4}{4} \approx 0.0607
-\]
+$$
 
 This matches Solady's comment: *"This seed gives \\(\varepsilon_1 = 0.0607\\) after one Babylonian step for all inputs."*
 
@@ -445,15 +445,15 @@ Now from \\(z = 4\\) again: same as before, drops to 3. The iteration ping-pongs
 
 **In general**, for any \\(x = n^2 - 1\\) (one less than a perfect square), the iteration cycles between \\(n - 1\\) and \\(n\\). We can prove it: starting from \\(z = n\\),
 
-\[
+$$
 \left\lfloor \frac{x}{n} \right\rfloor = \left\lfloor \frac{n^2 - 1}{n} \right\rfloor = \left\lfloor n - \frac{1}{n} \right\rfloor = n - 1
-\]
+$$
 
 So the next value is \\(\lfloor(n + (n-1))/2\rfloor = \lfloor(2n-1)/2\rfloor = n - 1\\). Starting from \\(z = n - 1\\),
 
-\[
+$$
 \left\lfloor \frac{x}{n - 1} \right\rfloor = \left\lfloor \frac{n^2 - 1}{n - 1} \right\rfloor = \left\lfloor n + 1 \right\rfloor = n + 1
-\]
+$$
 
 So the next value is \\(\lfloor((n-1) + (n+1))/2\rfloor = n\\). Back to \\(n\\), cycle confirmed.
 
@@ -484,9 +484,9 @@ Every single line of this implementation is mathematically justified:
 
 What about cube roots? The Newton iteration is similar:
 
-\[
+$$
 z_{n+1} = \frac{2z + x/z^2}{3}
-\]
+$$
 
 But the \\(1/z^2\\) term breaks the symmetry we had for square roots. The cube-root error map does **not** satisfy \\(g(r) = g(1/r)\\) — and because of that, magic constants actually work.
 
