@@ -25,26 +25,17 @@
   <!-- KaTeX -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
-    onload="renderMathInElement(document.body, {
-      delimiters: [
-        {left: '$$', right: '$$', display: true},
-        {left: '\\[', right: '\\]', display: true},
-        {left: '\\(', right: '\\)', display: false}
-      ],
-      throwOnError: false,
-      ignoredTags: ['script','noscript','style','textarea','pre','code']
-    }); document.querySelectorAll('script[type^=\"math/tex\"]').forEach(function(el){var d=el.getAttribute('type').indexOf('display')>-1;var s=document.createElement('span');try{katex.render(el.textContent,s,{displayMode:d,throwOnError:false})}catch(e){s.textContent=el.textContent}el.parentNode.replaceChild(s,el)});"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"></script>
 
   <!-- Styles -->
   <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/syntax.css' | relative_url }}">
 
-  <!-- Theme: restore before paint -->
+  <!-- Theme: restore before paint (light default) -->
   <script>
     (function() {
       var t = localStorage.getItem('theme');
-      if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
 </head>
@@ -75,12 +66,40 @@
       <span>&copy; {{ 'now' | date: "%Y" }} {{ site.title }}</span>
       <div class="footer-links">
         {% if site.github_username %}<a href="https://github.com/{{ site.github_username }}" target="_blank" rel="noopener">GitHub</a>{% endif %}
-        {% if site.twitter_username %}<a href="https://twitter.com/{{ site.twitter_username }}" target="_blank" rel="noopener">Twitter</a>{% endif %}
+        {% if site.x_username %}<a href="https://x.com/{{ site.x_username }}" target="_blank" rel="noopener">X</a>{% endif %}
       </div>
     </div>
   </footer>
 
-  <!-- Theme toggle logic -->
+  <!-- KaTeX rendering -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      if (typeof renderMathInElement !== 'undefined') {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\[', right: '\\]', display: true},
+            {left: '\\(', right: '\\)', display: false}
+          ],
+          throwOnError: false,
+          ignoredTags: ['script','noscript','style','textarea','pre','code']
+        });
+      }
+      // Fallback: render <script type="math/tex"> tags from kramdown
+      document.querySelectorAll('script[type^="math/tex"]').forEach(function(el) {
+        var displayMode = el.getAttribute('type').indexOf('display') > -1;
+        var span = document.createElement('span');
+        try {
+          katex.render(el.textContent, span, {displayMode: displayMode, throwOnError: false});
+        } catch(e) {
+          span.textContent = el.textContent;
+        }
+        el.parentNode.replaceChild(span, el);
+      });
+    });
+  </script>
+
+  <!-- Theme toggle logic (light default) -->
   <script>
     (function() {
       var btn = document.getElementById('themeToggle');
@@ -88,21 +107,21 @@
       var moon = document.getElementById('iconMoon');
 
       function setIcons() {
-        var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-        sun.style.display = isLight ? 'none' : 'block';
-        moon.style.display = isLight ? 'block' : 'none';
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        sun.style.display = isDark ? 'block' : 'none';
+        moon.style.display = isDark ? 'none' : 'block';
       }
 
       setIcons();
 
       btn.addEventListener('click', function() {
-        var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-        if (isLight) {
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        if (isDark) {
           document.documentElement.removeAttribute('data-theme');
           localStorage.removeItem('theme');
         } else {
-          document.documentElement.setAttribute('data-theme', 'light');
-          localStorage.setItem('theme', 'light');
+          document.documentElement.setAttribute('data-theme', 'dark');
+          localStorage.setItem('theme', 'dark');
         }
         setIcons();
       });

@@ -7,7 +7,7 @@ baseurl: ""
 # Author
 author: atarpara
 github_username: atarpara
-# twitter_username: your_twitter_handle
+x_username: atarpara
 
 markdown: kramdown
 kramdown:

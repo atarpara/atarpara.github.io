@@ -41,7 +41,7 @@ function sqrt(uint256 x) internal pure returns (uint256 z) {
 }
 ```
 
-Eight lines of assembly. Eighty bytes of bytecode. This is a complete `uint256` square root — and it's the exact implementation shipped in [Solady's `FixedPointMathLib`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L769-L799) (the CLZ-using variant).
+Eight lines of assembly. Eighty bytes of bytecode. This is a complete `uint256` square root — and it's the exact implementation shipped in [Solady's `FixedPointMathLib`](https://github.com/Vectorized/solady/blob/a119c6341b80b64979739eb471acf984d8aafb6d/src/utils/clz/FixedPointMathLib.sol#L769-L799) (the CLZ-using variant).
 
 But the code raises questions:
 

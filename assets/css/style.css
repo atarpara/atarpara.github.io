@@ -1,47 +1,13 @@
 /* ═══════════════════════════════════════════════════════
    atarpara.github.io — Design System
-   Dark-first, toggle to light. Inter + JetBrains Mono.
+   Light-first, toggle to dark. Inter + JetBrains Mono.
    ═══════════════════════════════════════════════════════ */
 
-/* ── Tokens (Dark — default) ─────────────────────────── */
+/* ── Tokens (Light — default) ────────────────────────── */
 :root {
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-  --bg:          #0d1117;
-  --bg-surface:  #161b22;
-  --bg-elevated: #1c2128;
-  --bg-code:     #1c2128;
-
-  --text:        #e6edf3;
-  --text-muted:  #8b949e;
-  --text-subtle: #6e7681;
-
-  --accent:      #58a6ff;
-  --accent-hover:#79c0ff;
-  --accent-glow: rgba(88, 166, 255, 0.15);
-  --accent-secondary: #f0883e;
-
-  --border:      #30363d;
-  --border-highlight: #58a6ff;
-
-  --gradient-hero: linear-gradient(135deg, #58a6ff 0%, #bc8cff 50%, #f0883e 100%);
-  --gradient-text: linear-gradient(135deg, #58a6ff, #bc8cff);
-
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md:  0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg:  0 8px 30px rgba(0,0,0,0.5);
-  --shadow-glow: 0 0 20px rgba(88, 166, 255, 0.08);
-
-  --radius:     8px;
-  --radius-lg:  12px;
-  --max-width:  760px;
-
-  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ── Tokens (Light) ──────────────────────────────────── */
-[data-theme="light"] {
   --bg:          #ffffff;
   --bg-surface:  #f6f8fa;
   --bg-elevated: #ffffff;
@@ -66,6 +32,40 @@
   --shadow-md:  0 4px 12px rgba(31,35,40,0.08);
   --shadow-lg:  0 8px 30px rgba(31,35,40,0.1);
   --shadow-glow: 0 0 20px rgba(9, 105, 218, 0.06);
+
+  --radius:     8px;
+  --radius-lg:  12px;
+  --max-width:  760px;
+
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Tokens (Dark) ───────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:          #0d1117;
+  --bg-surface:  #161b22;
+  --bg-elevated: #1c2128;
+  --bg-code:     #1c2128;
+
+  --text:        #e6edf3;
+  --text-muted:  #8b949e;
+  --text-subtle: #6e7681;
+
+  --accent:      #58a6ff;
+  --accent-hover:#79c0ff;
+  --accent-glow: rgba(88, 166, 255, 0.15);
+  --accent-secondary: #f0883e;
+
+  --border:      #30363d;
+  --border-highlight: #58a6ff;
+
+  --gradient-hero: linear-gradient(135deg, #58a6ff 0%, #bc8cff 50%, #f0883e 100%);
+  --gradient-text: linear-gradient(135deg, #58a6ff, #bc8cff);
+
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg:  0 8px 30px rgba(0,0,0,0.5);
+  --shadow-glow: 0 0 20px rgba(88, 166, 255, 0.08);
 }
 
 /* ── Reset ───────────────────────────────────────────── */
