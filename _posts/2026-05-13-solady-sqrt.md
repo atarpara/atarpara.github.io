@@ -5,9 +5,9 @@ description: "Deriving every constant in Solady's 80-byte assembly sqrt from fir
 tags: [solidity, math, optimization, solady]
 ---
 
-A `uint256` square root in Solidity takes exactly 8 lines of Yul. The implementation shipped in Solady's `FixedPointMathLib` is 80 bytes of bytecode, uses no magic multipliers, unrolls a loop exactly 6 times, and finishes with a single floor correction.
+> *Special thanks to [Duncan](https://github.com/duncancmt) for formally verifying this implementation in [0x-settler#511](https://github.com/0xProject/0x-settler/pull/511).*
 
-If you're building an AMM or doing fixed-point math, you've probably copied this code. But do you know *why* it works?
+A `uint256` square root in Solidity takes exactly 8 lines of Yul. The implementation shipped in Solady's `FixedPointMathLib` is 80 bytes of bytecode, uses no magic multipliers, unrolls a loop exactly 6 times, and finishes with a single floor correction.
 
 In this post, we are going to derive every single choice from scratch, using nothing fancier than high-school algebra. We will prove why the simple bit-length-based initial guess is the best you can do, and why any "magic constant" you might want to multiply it by is provably equal to 1.
 
