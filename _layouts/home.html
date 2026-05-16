@@ -20,9 +20,8 @@ layout: default
       <time>{{ post.date | date: "%B %-d, %Y" }}</time>
       {% assign words = post.content | number_of_words %}
       {% assign minutes = words | divided_by: 230 %}
-      {% if minutes < 1 %}{% assign minutes = 1 %}{% endif %}
-      <span class="dot">·</span>
-      <span>{{ minutes }} min read</span>
+      {% if minutes < 1 %}{% assign minutes=1 %}{% endif %} <span class="dot">·</span>
+        <span>{{ minutes }} min read</span>
     </div>
     {% if post.tags.size > 0 %}
     <div class="post-tags">

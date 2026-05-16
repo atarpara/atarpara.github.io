@@ -20,6 +20,7 @@
   --accent:      #0969da;
   --accent-hover:#0550ae;
   --accent-glow: rgba(9, 105, 218, 0.1);
+  --accent-underline: rgba(9, 105, 218, 0.35);
   --accent-secondary: #cf222e;
 
   --border:      #d0d7de;
@@ -54,6 +55,7 @@
   --accent:      #58a6ff;
   --accent-hover:#79c0ff;
   --accent-glow: rgba(88, 166, 255, 0.15);
+  --accent-underline: rgba(88, 166, 255, 0.4);
   --accent-secondary: #f0883e;
 
   --border:      #30363d;
@@ -448,7 +450,7 @@ article p {
 article a {
   color: var(--accent);
   text-decoration: underline;
-  text-decoration-color: rgba(88, 166, 255, 0.3);
+  text-decoration-color: var(--accent-underline);
   text-underline-offset: 2px;
   transition: text-decoration-color var(--transition);
 }
@@ -668,7 +670,7 @@ footer {
 .about-content a {
   color: var(--accent);
   text-decoration: underline;
-  text-decoration-color: rgba(88, 166, 255, 0.3);
+  text-decoration-color: var(--accent-underline);
   text-underline-offset: 2px;
 }
 
@@ -723,6 +725,33 @@ footer {
     flex-direction: column;
     gap: 0.75rem;
     text-align: center;
+  }
+}
+
+/* ── Focus & Accessibility ───────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.theme-toggle:focus-visible {
+  outline-offset: 2px;
+}
+
+.post-entry:focus-visible {
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .post-entry:hover {
+    transform: none;
   }
 }
 

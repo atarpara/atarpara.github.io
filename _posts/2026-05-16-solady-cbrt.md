@@ -1,15 +1,19 @@
 ---
 layout: post
-title: "Solady's cbrt, derived: cube root, broken symmetry, and three magic constants"
-description: "Deriving Solady's assembly cbrt from first principles — Newton's method, the asymmetry of the cube root error function, and the math behind the magic constants."
+title: "Solady's cbrt, derived: The cost of broken symmetry and the 0x90b5e5 magic constant"
+description: "A complete mathematical derivation of Solady's highly-optimized cbrt function. Exploring Newton's method, the asymmetry of the error map, and the origin of its magic constants."
 tags: [solidity, math, optimization, solady]
 ---
 
-> *Special thanks to [Duncan](https://github.com/duncancmt) for the original implementation in [0x-settler/Cbrt.sol](https://github.com/0xProject/0x-settler/blob/2577ae61a3ca26a5b37ef8769b05f05de5115e93/src/vendor/Cbrt.sol).*
+> *Special thanks to [Duncan](https://x.com/duncancmt) for the original implementation in [0x-settler/Cbrt.sol](https://github.com/0xProject/0x-settler/blob/2577ae61a3ca26a5b37ef8769b05f05de5115e93/src/vendor/Cbrt.sol).*
 
 There is a number sitting in the middle of Solady's `cbrt` with no comment, no link, and no explanation: **`0x90b5e5`**. It is packed into a one-byte table lookup that runs before any real math happens. Remove it and the function still works — it just runs about 40% slower.
 
 This post is about what that number is, why it exists, and why nothing like it appears in the `sqrt` function we [worked through last time](https://atarpara.github.io/solady-sqrt). The short version: square root has a hidden symmetry that makes magic constants pointless. Cube root doesn't. `0x90b5e5` is the exact price of that broken symmetry.
+
+Understanding this saves you from the trap of thinking optimized math code is just "bit tricks" — there's a clean theory underneath, and once you see it, you can derive these constants yourself for any root.
+
+> **TL;DR:** Cube root's Newton method punishes underestimates much harder than overestimates (unlike square root, which treats them equally). The constant `0x90b5e5` packs three correction factors — one per remainder class of the input's bit-length mod 3 — that rebalance each case so no starting guess is too far off. This turns 7 Newton iterations into 5, saving ~160 gas for ~10 gas of setup.
 
 Here is the implementation from [Solady's `FixedPointMathLib`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L804-L829):
 
@@ -166,7 +170,7 @@ Worst case: \\(\lvert\varepsilon_0\rvert = 0.260\\).
 | 1 | \\(2^k\\) | \\((0.630, \; 0.794]\\) | \\((-0.370, \; -0.206]\\) | **0.370** | underestimate |
 | 2 | \\(2^{k+1}\\) | \\((1, \; 1.260]\\) | \\((0, \; 0.260]\\) | 0.260 | overestimate |
 
-**Case 1 is the bottleneck** — always an underestimate, worst error 0.370, only 1.43 bits of accuracy.
+**Case 1 is the bottleneck** — always an underestimate, worst error 0.370, only 1.43 bits of accuracy. Our three starting points range from "pretty close" to "dangerously far off" — and it's the worst one that decides how many iterations we need.
 
 But hold on — is being an underestimate actually worse than being an overestimate of the same size? For sqrt the answer was no, they're identical. For cbrt, as we're about to see, the answer is *very much yes*.
 
@@ -233,13 +237,13 @@ The graph below shows this visually. The blue curve (sqrt) is nearly symmetric a
 
 ### Why underestimates are dangerous
 
-Suppose our guess is half the true answer — \\(\varepsilon_0 = -0.5\\). Plug in:
+Let's make this concrete with a number. Suppose our guess is half the true answer — \\(\varepsilon_0 = -0.5\\). Plug in:
 
 $$
 \varepsilon_1 = \frac{(-0.5)^2 \cdot (3 - 1)}{3 \cdot (0.5)^2} = \frac{0.25 \times 2}{0.75} \approx 0.667
 $$
 
-**0.5 in, 0.667 out.** A "correction" that made things worse. The \\(1/r^2\\) term blows up when \\(r\\) is small — at \\(r = 0.5\\), it gives 4, which Newton then plugs straight into the next guess.
+**0.5 in, 0.667 out.** You asked Newton to fix your guess, and it handed you back something *worse*. The \\(1/r^2\\) term blows up when \\(r\\) is small — at \\(r = 0.5\\), it gives 4, which Newton then plugs straight into the next guess. It's like asking for directions and being sent further from your destination.
 
 Sqrt's symmetry made sure the correction was equal in both directions, so this couldn't happen. Cube root has no such safety net, and any algorithm that doesn't account for it will waste iterations.
 
@@ -263,7 +267,7 @@ $$
 
 From \\(0.260\\) down to \\(0.050\\). That's 1.94 bits jumping to 4.32 bits — a huge improvement.
 
-**Case 1 spends its entire first Newton step just getting back to where Case 2 already started.** After step 1, Case 1's error is \\(+0.260\\) — exactly Case 2's starting point. From there both cases follow the same path.
+**Case 1 spends its entire first Newton step just getting back to where Case 2 already started.** After step 1, Case 1's error is \\(+0.260\\) — exactly Case 2's starting point. From there both cases follow the same path. It's like running a race where one runner has to jog back to the starting line before they can actually begin.
 
 That's the asymmetry tax: a full Newton iteration, paid only by underestimates, while overestimates get the same progress for free.
 
@@ -314,29 +318,50 @@ In sqrt, the symmetry made this pointless — any \\(c \neq 1\\) hurt one side a
 
 ## Deriving the three magic constants
 
-### Step 1: Switch to a uniform base
+### Step 1: Give each bucket its own boost
 
-To make the math cleaner, let's use the simplest possible base — just \\(2^{\lfloor n/3 \rfloor}\\) — and put ALL the adjustment into the multiplier:
+Think of it like this. You have three groups of inputs, and for each group, your guess lands in a different spot relative to the true answer:
+
+- **Bucket 0:** Your guess is 79–100% of the truth (not bad)
+- **Bucket 1:** Your guess is 63–79% of the truth (too low — danger zone)
+- **Bucket 2:** Your guess is 50–63% of the truth (way too low)
+
+What if, before running Newton's method, you multiplied your guess by a small correction factor? A different factor for each bucket, chosen so that every bucket lands in the same sweet spot?
+
+Picture a number line with 1.0 in the middle (a perfect guess). Each bucket is a range sitting to the left of 1.0. We want to slide each range so it's *centered* on 1.0 — half overestimating, half underestimating, by equal amounts.
+
+To make this work cleanly in the code (and avoid branches in the assembly), we first force the base guess to use the same formula for all three cases: just \\(2^{\lfloor n/3 \rfloor}\\) (which is \\(2^k\\)). Then we put ALL the adjustment burden onto a per-bucket multiplier:
 
 $$
 z_0 = c_s \cdot 2^{\lfloor n/3 \rfloor}
 $$
 
-Here \\(c_s\\) is a multiplier that depends on \\(s = n \bmod 3\\). Without any multiplier (\\(c_s = 1\\)), the ratio ranges are:
+Here \\(c_s\\) is a multiplier that depends on \\(s = n \bmod 3\\).
 
-| \\(s\\) | Base ratio \\(r_0 = 2^{\lfloor n/3\rfloor} / \sqrt[3]{x}\\) |
+> **Why \\(\lfloor n/3 \rfloor\\) instead of the naive \\(\lfloor(n+1)/3\rfloor\\)?**
+> **Gas.** In EVM assembly, computing `div(n, 3)` costs less than computing `div(add(n, 1), 3)`. Since we are going to use a table lookup for the multiplier \\(c_s\\) anyway, we can just bake the mathematical difference directly into the multiplier constants and save an instruction!
+
+To see exactly where the base bounds come from, remember that if \\(n = 3k + s\\), then \\(x\\) spans from \\(2^{3k+s}\\) up to \\(2^{3k+s+1}\\). This means the true cube root \\(\sqrt[3]{x}\\) spans from \\(2^{k+s/3}\\) up to \\(2^{k+(s+1)/3}\\).
+
+Since our base guess is fixed at \\(2^k\\), dividing the guess by those true bounds gives us the general baseline ratio range: \\((2^{-(s+1)/3}, \; 2^{-s/3}]\\).
+
+Plugging in \\(s \in \{0, 1, 2\}\\) gives us the exact baseline ratios before any multipliers are applied:
+
+| \\(s\\) | Base ratio \\(r_0 \in (2^{-(s+1)/3}, \; 2^{-s/3}]\\) |
 |---|---|
-| 0 | \\((2^{-1/3}, \; 1]\\) = \\((0.794, \; 1]\\) |
+| 0 | \\((2^{-1/3}, \; 2^0]\\) = \\((0.794, \; 1.000]\\) |
 | 1 | \\((2^{-2/3}, \; 2^{-1/3}]\\) = \\((0.630, \; 0.794]\\) |
 | 2 | \\((2^{-1}, \; 2^{-2/3}]\\) = \\((0.500, \; 0.630]\\) |
 
-Without multipliers, all three buckets are **underestimates** (\\(r_0 < 1\\)). That's the danger zone. The multiplier \\(c_s\\) will lift each one so its error is centered around zero.
+Without multipliers, all three buckets are **underestimates** (\\(r_0 \le 1\\)). That's the danger zone. The multiplier \\(c_s\\) will lift each one so its error is properly centered.
 
 ### Step 2: The centering condition
 
 After multiplying by \\(c_s\\), the range \\((a, b]\\) becomes \\((c_s \cdot a, \; c_s \cdot b]\\). We want this centered on \\(r = 1\\) — meaning the error at the low end and the error at the high end are equal in size (one negative, one positive).
 
-The natural way to measure "centered" for ratios is on a log scale. The new endpoints \\(c_s \cdot a\\) and \\(c_s \cdot b\\) are centered on 1 when their logs add to zero:
+**What does "centered" mean here?** Since we're dealing with ratios, the right notion of "center" is the *geometric mean*, not the arithmetic mean. If your range runs from *a* to *b*, you want the multiplier *c* such that *c·a* is as far below 1 as *c·b* is above 1 — on a log scale. It's the same idea as rebalancing a seesaw: find the midpoint (geometrically), and shift everything so that midpoint sits on 1.
+
+The new endpoints \\(c_s \cdot a\\) and \\(c_s \cdot b\\) are centered on 1 when their logs add to zero:
 
 $$
 \log_2(c_s \cdot a) + \log_2(c_s \cdot b) = 0
@@ -374,27 +399,23 @@ Three beautiful numbers: \\(2^{1/6}\\), \\(2^{3/6}\\), \\(2^{5/6}\\) — evenly 
 
 ### Step 4: Verify the centered ranges
 
-After multiplying, each bucket's ratio range becomes:
-
-**\\(s = 0\\)**: \\((2^{-1/3} \cdot 2^{1/6}, \;\; 1 \cdot 2^{1/6}] = (2^{-1/6}, \; 2^{1/6}]\\)
+Applying our multipliers shifts all three buckets into the exact same balanced range:
 
 $$
-r_0 \in (0.891, \; 1.122] \qquad\Rightarrow\qquad \lvert\varepsilon_0\rvert \le 0.122
+\begin{aligned}
+s = 0: \quad & (2^{-1/3} \cdot 2^{1/6}, \;\; 1 \cdot 2^{1/6}] &= (2^{-1/6}, \; 2^{1/6}] \\
+s = 1: \quad & (2^{-2/3} \cdot 2^{1/2}, \;\; 2^{-1/3} \cdot 2^{1/2}] &= (2^{-1/6}, \; 2^{1/6}] \\
+s = 2: \quad & (2^{-1} \cdot 2^{5/6}, \;\; 2^{-2/3} \cdot 2^{5/6}] &= (2^{-1/6}, \; 2^{1/6}]
+\end{aligned}
 $$
 
-**\\(s = 1\\)**: \\((2^{-2/3} \cdot \sqrt{2}, \;\; 2^{-1/3} \cdot \sqrt{2}] = (2^{-1/6}, \; 2^{1/6}]\\)
+Because they all map to \\((2^{-1/6}, \; 2^{1/6}]\\), the initial ratio \\(r_0\\) is bounded exactly the same way regardless of the remainder:
 
 $$
-r_0 \in (0.891, \; 1.122] \qquad\Rightarrow\qquad \lvert\varepsilon_0\rvert \le 0.122
+r_0 \in (0.891, \; 1.122] \implies \lvert\varepsilon_0\rvert \le 0.122
 $$
 
-**\\(s = 2\\)**: \\((2^{-1} \cdot 2^{5/6}, \;\; 2^{-2/3} \cdot 2^{5/6}] = (2^{-1/6}, \; 2^{1/6}]\\)
-
-$$
-r_0 \in (0.891, \; 1.122] \qquad\Rightarrow\qquad \lvert\varepsilon_0\rvert \le 0.122
-$$
-
-**All three buckets land in the same range: \\((2^{-1/6}, \; 2^{1/6}]\\).** The per-remainder multipliers have made the error the same in every case.
+**The per-remainder multipliers have made the error the same in every case.**
 
 ![Three error buckets before and after multipliers](/assets/images/cbrt-buckets.png)
 *Before multipliers (top): three buckets scattered across different positions relative to \\(r = 1\\). After multipliers (bottom): all three collapse to the same narrow range centered on \\(r = 1\\). Worst error drops from 0.370 to 0.122.*
@@ -410,7 +431,13 @@ A 1.6-bit improvement from a one-byte lookup.
 
 ## From real numbers to `0x90b5e5`
 
-These ideal multipliers are irrational numbers (numbers like \\(\sqrt{2}\\) that can't be written as a fraction). But the EVM only does integer math. Solady turns each one into a fraction with denominator 128, which fits in 8 bits:
+These ideal multipliers are irrational numbers (numbers like \\(\sqrt{2}\\) that can't be written as a fraction). But the EVM only does integer math. So how do we actually use them?
+
+The trick is **fixed-point arithmetic**: multiply each constant by 128 (a power of 2), round to the nearest integer, and later divide by 128 using a cheap bit shift.
+
+Let's walk through one example completely. Take bucket 0: the ideal multiplier is \\(2^{1/6} \approx 1.1225\\). Multiply by 128: \\(1.1225 \times 128 = 143.68\\), which rounds to **144**, or **0x90** in hex. That's our first byte.
+
+Do the same for the other two buckets:
 
 | \\(s\\) | Optimal \\(c_s\\) | \\(c_s \times 128\\) | Rounded | Hex |
 |---|---|---|---|---|
@@ -418,7 +445,7 @@ These ideal multipliers are irrational numbers (numbers like \\(\sqrt{2}\\) that
 | 1 | \\(\sqrt{2} \approx 1.4142\\) | 181.02 | **181** | `0xb5` |
 | 2 | \\(2^{5/6} \approx 1.7818\\) | 228.07 | **229** | `0xe5` |
 
-Pack the three bytes and you get **`0x90b5e5`**. That's the magic constant.
+Concatenate the three bytes and you get **`0x90b5e5`**. That's the magic constant — three carefully derived correction factors, packed into 3 bytes.
 
 ### How the code uses it
 
@@ -441,7 +468,7 @@ $$
 z_0 = \frac{c_s}{128} \cdot 2^{\lfloor n/3 \rfloor}
 $$
 
-Exactly what we derived, implemented in 7 opcodes.
+In one line: figure out which bucket you're in, grab the right byte from the constant, multiply it by the power-of-two base, and divide by 128 to undo the fixed-point scaling. Seven opcodes, three multipliers, no branches.
 
 ---
 
