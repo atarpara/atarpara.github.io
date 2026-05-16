@@ -5,11 +5,17 @@ description: "Deriving Solady's assembly cbrt from first principles — Newton's
 tags: [solidity, math, optimization, solady]
 ---
 
-In the [previous post](https://atarpara.github.io/solady-sqrt), we derived every constant in Solady's 80-byte `sqrt`. The key finding was that the Newton map for square root has a symmetry — \\(g(r) = g(1/r)\\) — and this symmetry **rules out** any magic-constant optimization. The best constant is provably 1.
+> *Special thanks to [Duncan](https://github.com/duncancmt) for the original implementation in [0x-settler/Cbrt.sol](https://github.com/0xProject/0x-settler/blob/2577ae61a3ca26a5b37ef8769b05f05de5115e93/src/vendor/Cbrt.sol).*
 
-Cube root looks almost identical on the surface. Here is the implementation from [Solady's `FixedPointMathLib`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L805-L829):
+There is a number sitting in the middle of Solady's `cbrt` with no comment, no link, and no explanation: **`0x90b5e5`**. It is packed into a one-byte table lookup that runs before any real math happens. Remove it and the function still works — it just runs about 40% slower.
+
+This post is about what that number is, why it exists, and why nothing like it appears in the `sqrt` function we [worked through last time](https://atarpara.github.io/solady-sqrt). The short version: square root has a hidden symmetry that makes magic constants pointless. Cube root doesn't. `0x90b5e5` is the exact price of that broken symmetry.
+
+Here is the implementation from [Solady's `FixedPointMathLib`](https://github.com/Vectorized/solady/blob/main/src/utils/clz/FixedPointMathLib.sol#L804-L829):
 
 ```solidity
+/// Credit to duncancmt
+/// https://github.com/0xProject/0x-settler/blob/2577ae61a3ca26a5b37ef8769b05f05de5115e93/src/vendor/Cbrt.sol
 function cbrt(uint256 x) internal pure returns (uint256 z) {
     /// @solidity memory-safe-assembly
     assembly {
@@ -27,32 +33,18 @@ function cbrt(uint256 x) internal pure returns (uint256 z) {
 }
 ```
 
-Same shape as `sqrt` — initial guess, Newton iterations, floor correction. But two things are different:
+Same shape as `sqrt` — initial guess, Newton iterations, floor correction. But two things stand out:
 
-1. The initial guess has a **magic constant** packed inside `0x90b5e5`. Square root had no such thing.
+1. The initial guess hides a **magic constant** inside `0x90b5e5`. Square root had no such thing.
 2. There are **5** Newton iterations, not 6.
 
-These two facts are connected. The magic constant is what makes 5 iterations enough. In this post, we are going to derive exactly why the constant is necessary, and we'll do it step-by-step.
+These two facts are the same fact. The constant is what makes 5 iterations enough; without it you'd need 7. Everything that follows shows, step by step, why that number has to exist and why those exact three bytes are the right ones.
 
-The main result, mirroring the `sqrt` post: **cube root's Newton map breaks the symmetry that protected square root**, and that broken symmetry is *exactly* what lets magic constants pay off.
-
----
-
-## How much precision do we need?
-
-Before we start, let's figure out our target. We want `floor(∛x)` for any `x` up to \\(2^{256} - 1\\). How big can the answer get?
-
-$$
-\lfloor\sqrt[3]{2^{256} - 1}\rfloor \approx 2^{85.33}
-$$
-
-The result fits in **at most 86 bits**. This is our precision target — less than the 128 bits sqrt needed. Fewer bits to chase means fewer iterations *might* work — if we can get a good enough starting guess.
+The target is `floor(∛x)` for any `x` up to \\(2^{256} - 1\\). Since \\(\lfloor\sqrt[3]{2^{256} - 1}\rfloor \approx 2^{85.33}\\), the answer fits in **at most 86 bits** — that's our precision budget. Sqrt needed 128 bits; cube root needs less, which leaves room to be clever about iterations.
 
 ---
 
 ## Bounding the cube root
-
-To build an initial guess, we first need to know roughly how big \\(\sqrt[3]{x}\\) is, based on how many bits \\(x\\) has.
 
 Let \\(n = \lfloor\log_2(x)\rfloor\\) — the position of the highest set bit. By definition:
 
@@ -66,7 +58,7 @@ $$
 2^{n/3} \le \sqrt[3]{x} < 2^{(n+1)/3} \quad \text{--- (eq. 1)}
 $$
 
-The true cube root is squeezed between two powers of 2. The gap between them is always a factor of \\(2^{1/3} \approx 1.26\\).
+The true cube root is squeezed between two powers of 2, and the gap between them is always a factor of \\(2^{1/3} \approx 1.26\\). That's enough to nail down a starting guess — but as we'll see, *which* power of 2 we pick matters a lot.
 
 ---
 
@@ -82,6 +74,20 @@ This is the cube root analog of the sqrt post's initial guess \\(2^{\lfloor(n+1)
 
 Because we divide by 3, the exact behavior depends on the **remainder** when \\(n\\) is divided by 3. There are three cases.
 
+For each, we'll track two quantities. The first is the **ratio** of our guess to the truth:
+
+$$
+r_0 = \frac{z_0}{\sqrt[3]{x}}
+$$
+
+The second is the **relative error** — the standard definition, "how far off as a fraction of the truth":
+
+$$
+\varepsilon_0 = \frac{\text{approximation} - \text{true value}}{\text{true value}} = \frac{z_0 - \sqrt[3]{x}}{\sqrt[3]{x}} = \frac{z_0}{\sqrt[3]{x}} - 1 = r_0 - 1
+$$
+
+So \\(\varepsilon_0\\) is just \\(r_0\\) shifted down by 1. Once we know the range of \\(r_0\\), we get the range of \\(\varepsilon_0\\) by subtracting 1 from both endpoints.
+
 ### Case 0: \\(n \bmod 3 = 0\\)
 
 Write \\(n = 3k\\). Then:
@@ -96,7 +102,15 @@ $$
 r_0 = \frac{z_0}{\sqrt[3]{x}} = \frac{2^k}{[2^k, \; 2^k \cdot 2^{1/3})} \;\in\; (2^{-1/3}, \; 1] \;=\; (0.794, \; 1]
 $$
 
-The ratio is **below 1** — this is an **underestimate**. The error \\(\varepsilon_0 = r_0 - 1\\) lies in \\((-0.206, \; 0]\\). Worst case: \\(\lvert\varepsilon_0\rvert = 0.206\\).
+The ratio is **below 1** — an **underestimate**. Subtracting 1:
+
+$$
+\varepsilon_0 = r_0 - 1 \;\in\; (0.794 - 1, \; 1 - 1] \;=\; (-0.206, \; 0]
+$$
+
+Worst case: \\(\lvert\varepsilon_0\rvert = 0.206\\).
+
+---
 
 ### Case 1: \\(n \bmod 3 = 1\\)
 
@@ -112,7 +126,15 @@ $$
 r_0 = \frac{2^k}{[2^k \cdot 2^{1/3}, \; 2^k \cdot 2^{2/3})} \;\in\; (2^{-2/3}, \; 2^{-1/3}] \;=\; (0.630, \; 0.794]
 $$
 
-This is a **deeper underestimate**. The error lies in \\((-0.370, \; -0.206]\\). Worst case: \\(\lvert\varepsilon_0\rvert = 0.370\\).
+A **deeper underestimate**. Subtracting 1:
+
+$$
+\varepsilon_0 = r_0 - 1 \;\in\; (0.630 - 1, \; 0.794 - 1] \;=\; (-0.370, \; -0.206]
+$$
+
+Worst case: \\(\lvert\varepsilon_0\rvert = 0.370\\).
+
+---
 
 ### Case 2: \\(n \bmod 3 = 2\\)
 
@@ -128,7 +150,13 @@ $$
 r_0 = \frac{2^{k+1}}{[2^k \cdot 2^{2/3}, \; 2^{k+1})} \;\in\; (1, \; 2^{1/3}] \;=\; (1, \; 1.260]
 $$
 
-This is an **overestimate** — the only case where our guess is above the true answer. Error: \\((0, \; 0.260]\\). Worst case: \\(\lvert\varepsilon_0\rvert = 0.260\\).
+An **overestimate** — the only case where our guess is above the true answer. Subtracting 1:
+
+$$
+\varepsilon_0 = r_0 - 1 \;\in\; (1 - 1, \; 1.260 - 1] \;=\; (0, \; 0.260]
+$$
+
+Worst case: \\(\lvert\varepsilon_0\rvert = 0.260\\).
 
 ### The combined picture
 
@@ -138,9 +166,9 @@ This is an **overestimate** — the only case where our guess is above the true 
 | 1 | \\(2^k\\) | \\((0.630, \; 0.794]\\) | \\((-0.370, \; -0.206]\\) | **0.370** | underestimate |
 | 2 | \\(2^{k+1}\\) | \\((1, \; 1.260]\\) | \\((0, \; 0.260]\\) | 0.260 | overestimate |
 
-**Case 1 is the bottleneck** — it's always an underestimate, and the worst error is 0.370 (only 1.43 bits of accuracy).
+**Case 1 is the bottleneck** — always an underestimate, worst error 0.370, only 1.43 bits of accuracy.
 
-Why does it matter whether we overestimate or underestimate? To answer that, we need to look at the Newton formula.
+But hold on — is being an underestimate actually worse than being an overestimate of the same size? For sqrt the answer was no, they're identical. For cbrt, as we're about to see, the answer is *very much yes*.
 
 ---
 
@@ -196,7 +224,7 @@ $$
 g(1/2) = \frac{1 + 4}{3} \approx 1.667
 $$
 
-**Not equal.** The symmetry is broken. The \\(1/r^2\\) term — from the \\(x/z^2\\) in Newton's step — treats large and small errors differently.
+**Not equal.** The symmetry is gone. Halving your guess costs you more than doubling it. The \\(1/r^2\\) term — from the \\(x/z^2\\) in Newton's step — punishes small \\(r\\) much harder than it punishes large \\(r\\). This single broken equality is the entire reason `0x90b5e5` exists.
 
 The graph below shows this visually. The blue curve (sqrt) is nearly symmetric around \\(\varepsilon = 0\\), while the orange curve (cbrt) tilts sharply upward for negative errors:
 
@@ -205,17 +233,15 @@ The graph below shows this visually. The blue curve (sqrt) is nearly symmetric a
 
 ### Why underestimates are dangerous
 
-What happens when we start with \\(\varepsilon_0 = -0.5\\) (our guess is half the true answer)? Plug in:
+Suppose our guess is half the true answer — \\(\varepsilon_0 = -0.5\\). Plug in:
 
 $$
 \varepsilon_1 = \frac{(-0.5)^2 \cdot (3 - 1)}{3 \cdot (0.5)^2} = \frac{0.25 \times 2}{0.75} \approx 0.667
 $$
 
-**The error went from 0.5 to 0.667. It got *worse*.** One Newton step made us further from the answer.
+**0.5 in, 0.667 out.** A "correction" that made things worse. The \\(1/r^2\\) term blows up when \\(r\\) is small — at \\(r = 0.5\\), it gives 4, which Newton then plugs straight into the next guess.
 
-The \\(1/r^2\\) term explodes when \\(r\\) is small. If our guess is half the true cube root (\\(r = 0.5\\)), then \\(1/r^2 = 4\\) — massive overcorrection.
-
-For sqrt, this couldn't happen because the symmetry guaranteed equal correction in both directions. **Cube root has no such safety net.**
+Sqrt's symmetry made sure the correction was equal in both directions, so this couldn't happen. Cube root has no such safety net, and any algorithm that doesn't account for it will waste iterations.
 
 ---
 
@@ -237,9 +263,9 @@ $$
 
 From \\(0.260\\) down to \\(0.050\\). That's 1.94 bits jumping to 4.32 bits — a huge improvement.
 
-**Case 1 wastes its entire first Newton step just recovering from the underestimate.** After that recovery, it arrives at \\(\varepsilon_1 = +0.260\\) — the exact same starting point as Case 2. From there, both cases follow the identical convergence path.
+**Case 1 spends its entire first Newton step just getting back to where Case 2 already started.** After step 1, Case 1's error is \\(+0.260\\) — exactly Case 2's starting point. From there both cases follow the same path.
 
-This is the asymmetry tax: underestimates cost you a full iteration that overestimates get for free.
+That's the asymmetry tax: a full Newton iteration, paid only by underestimates, while overestimates get the same progress for free.
 
 ---
 
@@ -268,7 +294,7 @@ With the plain bit-length guess and no other tricks, we need **7 Newton iteratio
 
 ## Can we do better?
 
-If the basic guess needs 7 iterations, how does Solady get away with just **5**?
+The naive guess needs 7 iterations. Solady ships with 5. Where do the missing two go?
 
 Look at the three error buckets again:
 
@@ -278,13 +304,11 @@ Look at the three error buckets again:
 | 1 | \\((-0.370, \; -0.206]\\) | well below 1 (danger zone) |
 | 2 | \\((0, \; 0.260]\\) | above 1 (safe zone) |
 
-The three buckets are all over the place — some below 1, some above 1, at different distances. Case 1 is deep in the underestimate zone where the asymmetry tax hits hardest.
+Three buckets, three completely different starting positions. Case 1 sits deep in the danger zone; Case 0 sits near it; Case 2 lands safely above. The result is very uneven worst-case behavior.
 
-**What if we multiplied each bucket by a carefully chosen constant to pull its range toward \\(r = 1\\)?**
+**Here's the trick: multiply each bucket by its own carefully chosen constant to pull its range onto \\(r = 1\\).**
 
-In the sqrt post, this idea failed — the symmetry forced the optimal constant to be 1. But cube root has no such symmetry. We're *free* to tune each bucket independently.
-
-This is the core insight. Let's derive those constants.
+In sqrt, the symmetry made this pointless — any \\(c \neq 1\\) hurt one side as much as it helped the other. Cube root has no such constraint. Each remainder is independent, so each gets its own best multiplier. Three buckets, three constants, packed into three bytes.
 
 ---
 
@@ -312,7 +336,7 @@ Without multipliers, all three buckets are **underestimates** (\\(r_0 < 1\\)). T
 
 After multiplying by \\(c_s\\), the range \\((a, b]\\) becomes \\((c_s \cdot a, \; c_s \cdot b]\\). We want this centered on \\(r = 1\\) — meaning the error at the low end and the error at the high end are equal in size (one negative, one positive).
 
-On a logarithmic scale, "centered on 1" means:
+The natural way to measure "centered" for ratios is on a log scale. The new endpoints \\(c_s \cdot a\\) and \\(c_s \cdot b\\) are centered on 1 when their logs add to zero:
 
 $$
 \log_2(c_s \cdot a) + \log_2(c_s \cdot b) = 0
@@ -346,7 +370,7 @@ $$
 c_2 = \frac{1}{\sqrt{2^{-1} \cdot 2^{-2/3}}} = \frac{1}{\sqrt{2^{-5/3}}} = 2^{5/6} \approx 1.7818
 $$
 
-Three beautiful numbers: \\(2^{1/6}\\), \\(2^{3/6}\\), \\(2^{5/6}\\) — evenly spaced on a logarithmic scale, exactly one-third of an octave apart.
+Three beautiful numbers: \\(2^{1/6}\\), \\(2^{3/6}\\), \\(2^{5/6}\\) — evenly spaced on a log scale (each one is a factor of \\(2^{1/3}\\) bigger than the previous).
 
 ### Step 4: Verify the centered ranges
 
@@ -370,7 +394,7 @@ $$
 r_0 \in (0.891, \; 1.122] \qquad\Rightarrow\qquad \lvert\varepsilon_0\rvert \le 0.122
 $$
 
-**All three buckets collapse to the same range: \\((2^{-1/6}, \; 2^{1/6}]\\).** The per-residue multipliers have unified the error picture.
+**All three buckets land in the same range: \\((2^{-1/6}, \; 2^{1/6}]\\).** The per-remainder multipliers have made the error the same in every case.
 
 ![Three error buckets before and after multipliers](/assets/images/cbrt-buckets.png)
 *Before multipliers (top): three buckets scattered across different positions relative to \\(r = 1\\). After multipliers (bottom): all three collapse to the same narrow range centered on \\(r = 1\\). Worst error drops from 0.370 to 0.122.*
@@ -386,7 +410,7 @@ A 1.6-bit improvement from a one-byte lookup.
 
 ## From real numbers to `0x90b5e5`
 
-These ideal multipliers are irrational numbers. We need integer arithmetic. Solady turns them into 8-bit fractions with denominator 128:
+These ideal multipliers are irrational numbers (numbers like \\(\sqrt{2}\\) that can't be written as a fraction). But the EVM only does integer math. Solady turns each one into a fraction with denominator 128, which fits in 8 bits:
 
 | \\(s\\) | Optimal \\(c_s\\) | \\(c_s \times 128\\) | Rounded | Hex |
 |---|---|---|---|---|
@@ -453,7 +477,7 @@ We need ~86 bits. **Step 5 gives 100 bits.** Done.
 
 The three magic constants saved **2 full Newton iterations** — roughly 160 gas — for the cost of a single byte-lookup (~10 gas of setup).
 
-And notice *where* the 2 iterations come from. Without multipliers, Case 1 wastes one step recovering from its underestimate, and then needs 6 more to converge — 7 total. The multipliers eliminated that wasted step by centering Case 1's range on \\(r = 1\\), AND improved the starting accuracy enough that 5 steps suffice instead of 6.
+And notice *where* those 2 iterations come from. Without multipliers, Case 1 wastes one step recovering from its underestimate, and then needs 6 more to finish — 7 total. The multipliers got rid of that wasted step by centering Case 1's range on \\(r = 1\\), AND made the starting accuracy good enough that 5 steps are enough instead of 6.
 
 ---
 
@@ -582,23 +606,8 @@ Higher \\(k\\) means the constant gets closer to \\(1/2\\), so convergence is sl
 
 ---
 
-## 10 facts behind 13 lines
-
-1. **Newton's iteration for \\(z^3 = x\\) is \\(z_{n+1} = (2z + x/z^2)/3\\)** — from Newton-Raphson with \\(f' = 3z^2\\).
-2. **The ratio recurrence is \\(r_{n+1} = (2r + 1/r^2)/3\\)** — substituting \\(z = r \cdot \sqrt[3]{x}\\) makes \\(x\\) disappear.
-3. **The Newton map is NOT symmetric**: \\(g(r) \neq g(1/r)\\). The \\(1/r^2\\) term breaks it.
-4. **Underestimates are dangerous** — \\(\varepsilon_0 = -0.5\\) gives \\(\varepsilon_1 = +0.667\\), the error *grows*.
-5. **The exact error formula is \\(\varepsilon_{n+1} = \varepsilon^2(3 + 2\varepsilon) / (3(1+\varepsilon)^2)\\)** — exact, not approximate.
-6. **The bit-length-only guess \\(z_0 = 2^{\lfloor(n+1)/3\rfloor}\\) gives worst \\(\lvert\varepsilon_0\rvert = 0.370\\)** — Case 1 underestimate is the bottleneck.
-7. **86 bits of precision is the target** — because \\(\lfloor(2^{256}-1)^{1/3}\rfloor\\) has 86 bits.
-8. **Without multipliers, 7 iterations are needed** — Case 1 wastes one step recovering from its underestimate.
-9. **Per-residue multipliers \\(2^{1/6}, \sqrt{2}, 2^{5/6}\\) center each bucket on \\(r = 1\\)** — three points equally spaced on a log scale.
-10. **The integer approximations are \\(144/128, 181/128, 229/128\\), packed as `0x90b5e5`** — saving exactly two iterations.
-
----
-
 ## Closing
 
-Solady's `0x90b5e5` looks like an opaque magic number until you see what it really is: three points evenly spaced on a logarithmic scale — \\(2^{1/6}\\), \\(2^{1/2}\\), \\(2^{5/6}\\) — each pulling a different residue bucket onto the same fixed point. Once you see that, it stops being magic.
+Solady's `0x90b5e5` looks like a random number until you see what it actually is: three points evenly spaced on a log scale, each one pulling a different remainder bucket onto the same fixed point. Once you see that, it stops looking magical.
 
-The generalization to any \\(k\\)-th root is clean: the Newton map's symmetry breaks for all \\(k \ge 3\\), and the recipe is always the same — \\(k\\) residues, \\(k\\) multipliers at \\(c_s = 2^{(2s+1)/2k}\\), rounded to fixed-point. The math doesn't care which \\(k\\).
+The same recipe works for every \\(k\\)-th root with \\(k \ge 3\\): the Newton map's symmetry breaks, you get \\(k\\) remainder buckets, and \\(c_s = 2^{(2s+1)/2k}\\) centers each one. Only square root is special — and it's special *because* of a symmetry, not in spite of one.
